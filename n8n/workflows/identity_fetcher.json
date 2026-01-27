@@ -1,0 +1,102 @@
+{
+    "name": "Identity Fetcher",
+    "nodes": [
+        {
+            "parameters": {},
+            "id": "trigger-node",
+            "name": "Execute Workflow Trigger",
+            "type": "n8n-nodes-base.executeWorkflowTrigger",
+            "typeVersion": 1,
+            "position": [
+                250,
+                300
+            ],
+            "notes": "This trigger allows other workflows to call this sub-workflow. Use 'Execute Workflow' node in parent workflows to invoke this."
+        },
+        {
+            "parameters": {
+                "operation": "read",
+                "documentId": {
+                    "__rl": true,
+                    "mode": "list",
+                    "value": "YOUR_GOOGLE_SHEET_ID"
+                },
+                "sheetName": {
+                    "__rl": true,
+                    "mode": "list",
+                    "value": "User Profile"
+                },
+                "options": {
+                    "valueRenderMode": "FORMATTED_VALUE"
+                }
+            },
+            "id": "google-sheets-node",
+            "name": "Get User Profile Data",
+            "type": "n8n-nodes-base.googleSheets",
+            "typeVersion": 4.5,
+            "position": [
+                450,
+                300
+            ],
+            "credentials": {
+                "googleSheetsOAuth2Api": {
+                    "id": "YOUR_CREDENTIAL_ID",
+                    "name": "Google Sheets Account"
+                }
+            },
+            "notes": "Pulls all rows from the 'User Profile' sheet. Each row should have 'field_name' and 'field_value' columns."
+        },
+        {
+            "parameters": {
+                "mode": "runOnceForAllItems",
+                "jsCode": "/**\n * Identity Fetcher - Transform Sheet Rows to Clean JSON\n * \n * Expected sheet format (2 columns):\n * | field_name    | field_value              |\n * |---------------|---------------------------|\n * | full_name     | John Doe                  |\n * | email         | john@example.com          |\n * | linkedin_url  | https://linkedin.com/in/j |\n * \n * Output: Single JSON object with field names as keys\n */\n\n// Get all items from the Google Sheets node\nconst rows = $input.all();\n\n// Transform rows into a clean key-value object\nconst userProfile = {};\n\nfor (const row of rows) {\n  const data = row.json;\n  \n  // Handle different possible column names\n  const fieldName = data.field_name || data.fieldName || data.Field || data.key || Object.keys(data)[0];\n  const fieldValue = data.field_value || data.fieldValue || data.Value || data.value || Object.values(data)[1];\n  \n  if (fieldName && fieldValue !== undefined) {\n    // Convert field name to snake_case for consistency\n    const cleanKey = fieldName\n      .toLowerCase()\n      .replace(/\\s+/g, '_')\n      .replace(/[^a-z0-9_]/g, '');\n    \n    userProfile[cleanKey] = fieldValue;\n  }\n}\n\n// Return the clean JSON object\nreturn {\n  json: {\n    success: true,\n    profile: userProfile,\n    fetched_at: new Date().toISOString(),\n    field_count: Object.keys(userProfile).length\n  }\n};"
+            },
+            "id": "code-node",
+            "name": "Transform to Clean JSON",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                650,
+                300
+            ],
+            "notes": "Converts sheet rows (field_name, field_value) into a clean JSON object with field names as keys."
+        }
+    ],
+    "connections": {
+        "Execute Workflow Trigger": {
+            "main": [
+                [
+                    {
+                        "node": "Get User Profile Data",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Get User Profile Data": {
+            "main": [
+                [
+                    {
+                        "node": "Transform to Clean JSON",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    },
+    "settings": {
+        "executionOrder": "v1"
+    },
+    "staticData": null,
+    "tags": [
+        {
+            "name": "sub-workflow"
+        },
+        {
+            "name": "identity"
+        }
+    ],
+    "pinData": {}
+}
