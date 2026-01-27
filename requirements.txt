@@ -1,0 +1,36 @@
+# =============================================================================
+# SmartApply Web Agent - Python Dependencies
+# =============================================================================
+# This file contains all required Python packages for the web agent.
+# Install with: pip install -r requirements.txt
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Web Framework & Server
+# -----------------------------------------------------------------------------
+fastapi>=0.109.0          # Modern, fast web framework for building APIs
+uvicorn[standard]>=0.27.0 # ASGI server with uvloop and httptools for production
+
+# -----------------------------------------------------------------------------
+# AI/LLM Integration
+# -----------------------------------------------------------------------------
+langchain-google-genai>=2.0.0  # LangChain integration for Google Gemini models
+langchain>=0.3.0               # LangChain core framework
+
+# -----------------------------------------------------------------------------
+# Browser Automation
+# -----------------------------------------------------------------------------
+browser-use>=0.1.0        # Web agent library for browser automation
+playwright>=1.40.0        # Headless browser automation (Chromium, Firefox, WebKit)
+
+# -----------------------------------------------------------------------------
+# Environment & Configuration
+# -----------------------------------------------------------------------------
+python-dotenv>=1.0.0      # Load environment variables from .env files
+pydantic>=2.5.0           # Data validation using Python type annotations
+pydantic-settings>=2.1.0  # Settings management with Pydantic
+
+# -----------------------------------------------------------------------------
+# Async Support
+# -----------------------------------------------------------------------------
+asyncio-compat>=0.1.0     # Async compatibility utilities (if needed)
