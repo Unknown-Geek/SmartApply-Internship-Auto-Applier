@@ -1,6 +1,6 @@
 # n8n Workflows
 
-This directory contains n8n workflow JSON files for SmartApply automation.
+This directory contains n8n workflow definitions for the SmartApply automation system.
 
 ## Workflows
 
@@ -8,63 +8,114 @@ This directory contains n8n workflow JSON files for SmartApply automation.
 
 A **sub-workflow** that acts as a single source of truth for user profile data.
 
-**Purpose**: Fetch user identity from Google Sheets and return clean JSON.
+**Purpose**: Fetches and transforms user profile data from Google Sheets into a clean JSON object that can be used by other workflows.
 
-**How it works**:
-1. **Execute Workflow Trigger** - Makes this callable by other workflows
-2. **Google Sheets Node** - Pulls all rows from "User Profile" sheet
-3. **Code Node** - Transforms rows to clean JSON object
-
-## Setup Instructions
-
-### 1. Import the Workflow
-
-1. Open n8n dashboard
-2. Go to **Workflows** → **Import from File**
-3. Select `identity_fetcher.json`
-
-### 2. Configure Google Sheets
-
-1. Click the "Get User Profile Data" node
-2. Connect your Google Sheets OAuth2 credentials
-3. Select your spreadsheet containing the "User Profile" sheet
-
-### 3. Sheet Format
-
-Your Google Sheet should have 2 columns:
-
-| field_name     | field_value                    |
-|----------------|--------------------------------|
-| full_name      | John Doe                       |
-| email          | john@example.com               |
-| phone          | +1 555-123-4567                |
-| linkedin_url   | https://linkedin.com/in/johnd  |
-| github_url     | https://github.com/johndoe     |
-| university     | MIT                            |
-| degree         | BS Computer Science            |
-| graduation     | May 2024                       |
-| skills         | Python, JavaScript, React      |
-
-### 4. Call from Other Workflows
-
-In any other n8n workflow, use the **Execute Workflow** node:
+#### How It Works
 
 ```
-Node: Execute Workflow
-Workflow: Identity Fetcher
+┌─────────────────────────────┐
+│ When Called by Another      │
+│ Workflow (Trigger)          │
+└──────────────┬──────────────┘
+               │
+               ▼
+┌─────────────────────────────┐
+│ Google Sheets Node          │
+│ - Reads "User Profile" sheet│
+│ - Returns all rows          │
+└──────────────┬──────────────┘
+               │
+               ▼
+┌─────────────────────────────┐
+│ Code Node (Transform)       │
+│ - Converts rows to JSON     │
+│ - Keys → snake_case         │
+└──────────────┬──────────────┘
+               │
+               ▼
+┌─────────────────────────────┐
+│ Set Output                  │
+│ - Returns profile to caller │
+└─────────────────────────────┘
 ```
 
-The output will be:
+#### Google Sheet Format
+
+Your "User Profile" sheet should have this structure:
+
+| field_name | field_value |
+|------------|-------------|
+| full_name | John Doe |
+| email | john@example.com |
+| phone | +1 555-123-4567 |
+| linkedin_url | https://linkedin.com/in/johndoe |
+| github_url | https://github.com/johndoe |
+| location | San Francisco, CA |
+| ... | ... |
+
+#### Output Format
+
 ```json
 {
   "success": true,
+  "fetched_at": "2024-01-27T10:30:00.000Z",
   "profile": {
     "full_name": "John Doe",
     "email": "john@example.com",
-    "linkedin_url": "https://linkedin.com/in/johnd",
-    ...
+    "phone": "+1 555-123-4567",
+    "linkedin_url": "https://linkedin.com/in/johndoe",
+    "github_url": "https://github.com/johndoe",
+    "location": "San Francisco, CA"
   },
-  "fetched_at": "2024-01-27T16:00:00.000Z",
-  "field_count": 9
+  "field_count": 6
 }
 ```
+
+#### Setup Instructions
+
+1. **Import the Workflow**:
+   - In n8n, go to **Workflows → Import from File**
+   - Select `identity_fetcher.json`
+
+2. **Configure Google Sheets Credentials**:
+   - Click on the "Read User Profile Sheet" node
+   - Add your Google Sheets OAuth2 credentials
+   - Select your spreadsheet document
+   - Ensure sheet name is "User Profile"
+
+3. **Test the Workflow**:
+   - Click "Execute Workflow" to test
+   - Verify the output JSON is correct
+
+#### Calling from Other Workflows
+
+Use the **Execute Workflow** node in your main workflow:
+
+```
+┌─────────────────────────────┐
+│ Your Main Workflow          │
+│                             │
+│  ┌───────────────────────┐  │
+│  │ Execute Workflow      │  │
+│  │ → Identity Fetcher    │  │
+│  └───────────┬───────────┘  │
+│              │              │
+│              ▼              │
+│  ┌───────────────────────┐  │
+│  │ Use $json.profile.*   │  │
+│  │ in subsequent nodes   │  │
+│  └───────────────────────┘  │
+└─────────────────────────────┘
+```
+
+Access fields like:
+- `{{ $json.profile.full_name }}`
+- `{{ $json.profile.email }}`
+- `{{ $json.profile.linkedin_url }}`
+
+## Adding New Workflows
+
+1. Create your workflow in n8n
+2. Export as JSON: **Workflows → Download**
+3. Save to this directory with a descriptive name
+4. Document in this README

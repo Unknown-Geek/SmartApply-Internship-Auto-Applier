@@ -3,15 +3,14 @@
     "nodes": [
         {
             "parameters": {},
-            "id": "trigger-node",
-            "name": "Execute Workflow Trigger",
+            "id": "start-node",
+            "name": "When Called by Another Workflow",
             "type": "n8n-nodes-base.executeWorkflowTrigger",
             "typeVersion": 1,
             "position": [
-                250,
+                240,
                 300
-            ],
-            "notes": "This trigger allows other workflows to call this sub-workflow. Use 'Execute Workflow' node in parent workflows to invoke this."
+            ]
         },
         {
             "parameters": {
@@ -19,7 +18,7 @@
                 "documentId": {
                     "__rl": true,
                     "mode": "list",
-                    "value": "YOUR_GOOGLE_SHEET_ID"
+                    "value": "={{ $json.sheetId || '' }}"
                 },
                 "sheetName": {
                     "__rl": true,
@@ -27,58 +26,90 @@
                     "value": "User Profile"
                 },
                 "options": {
-                    "valueRenderMode": "FORMATTED_VALUE"
+                    "headerRow": 1
                 }
             },
             "id": "google-sheets-node",
-            "name": "Get User Profile Data",
+            "name": "Read User Profile Sheet",
             "type": "n8n-nodes-base.googleSheets",
             "typeVersion": 4.5,
             "position": [
-                450,
+                460,
                 300
             ],
             "credentials": {
                 "googleSheetsOAuth2Api": {
-                    "id": "YOUR_CREDENTIAL_ID",
+                    "id": "YOUR_CREDENTIALS_ID",
                     "name": "Google Sheets Account"
                 }
             },
-            "notes": "Pulls all rows from the 'User Profile' sheet. Each row should have 'field_name' and 'field_value' columns."
+            "notes": "Reads all rows from the 'User Profile' sheet.\nExpects columns: field_name, field_value\nConfigure your Google Sheets credentials and document ID."
         },
         {
             "parameters": {
-                "mode": "runOnceForAllItems",
-                "jsCode": "/**\n * Identity Fetcher - Transform Sheet Rows to Clean JSON\n * \n * Expected sheet format (2 columns):\n * | field_name    | field_value              |\n * |---------------|---------------------------|\n * | full_name     | John Doe                  |\n * | email         | john@example.com          |\n * | linkedin_url  | https://linkedin.com/in/j |\n * \n * Output: Single JSON object with field names as keys\n */\n\n// Get all items from the Google Sheets node\nconst rows = $input.all();\n\n// Transform rows into a clean key-value object\nconst userProfile = {};\n\nfor (const row of rows) {\n  const data = row.json;\n  \n  // Handle different possible column names\n  const fieldName = data.field_name || data.fieldName || data.Field || data.key || Object.keys(data)[0];\n  const fieldValue = data.field_value || data.fieldValue || data.Value || data.value || Object.values(data)[1];\n  \n  if (fieldName && fieldValue !== undefined) {\n    // Convert field name to snake_case for consistency\n    const cleanKey = fieldName\n      .toLowerCase()\n      .replace(/\\s+/g, '_')\n      .replace(/[^a-z0-9_]/g, '');\n    \n    userProfile[cleanKey] = fieldValue;\n  }\n}\n\n// Return the clean JSON object\nreturn {\n  json: {\n    success: true,\n    profile: userProfile,\n    fetched_at: new Date().toISOString(),\n    field_count: Object.keys(userProfile).length\n  }\n};"
+                "jsCode": "// =============================================================================\n// Identity Fetcher - Transform Sheet Rows to Clean JSON\n// =============================================================================\n// This code transforms Google Sheets rows into a clean JSON object.\n// \n// Expected input format (each row from Google Sheets):\n//   { \"field_name\": \"full_name\", \"field_value\": \"John Doe\" }\n//   { \"field_name\": \"email\", \"field_value\": \"john@example.com\" }\n//\n// Output format:\n//   { \"full_name\": \"John Doe\", \"email\": \"john@example.com\", ... }\n// =============================================================================\n\n// Get all items from Google Sheets\nconst items = $input.all();\n\n// Transform array of rows into a single clean object\nconst userProfile = {};\n\nfor (const item of items) {\n  const data = item.json;\n  \n  // Handle different possible column naming conventions\n  const fieldName = data.field_name || data.Field_Name || data.FieldName || data.key || data.Key;\n  const fieldValue = data.field_value || data.Field_Value || data.FieldValue || data.value || data.Value;\n  \n  if (fieldName && fieldValue !== undefined) {\n    // Convert field name to snake_case for consistency\n    const cleanKey = fieldName\n      .toLowerCase()\n      .trim()\n      .replace(/\\s+/g, '_')      // Replace spaces with underscores\n      .replace(/[^a-z0-9_]/g, '') // Remove special characters\n      .replace(/_+/g, '_');       // Remove duplicate underscores\n    \n    userProfile[cleanKey] = fieldValue;\n  }\n}\n\n// Add metadata\nconst result = {\n  success: true,\n  fetched_at: new Date().toISOString(),\n  profile: userProfile,\n  field_count: Object.keys(userProfile).length\n};\n\n// Return as single item for downstream workflows\nreturn [{ json: result }];"
             },
-            "id": "code-node",
+            "id": "code-transform-node",
             "name": "Transform to Clean JSON",
             "type": "n8n-nodes-base.code",
             "typeVersion": 2,
             "position": [
-                650,
+                680,
                 300
             ],
-            "notes": "Converts sheet rows (field_name, field_value) into a clean JSON object with field names as keys."
+            "notes": "Transforms sheet rows into a clean JSON object.\nKeys are normalized to snake_case.\nHandles various column naming conventions."
+        },
+        {
+            "parameters": {
+                "values": {
+                    "string": [
+                        {
+                            "name": "status",
+                            "value": "={{ $json.success ? 'success' : 'error' }}"
+                        }
+                    ]
+                },
+                "options": {}
+            },
+            "id": "output-node",
+            "name": "Set Output",
+            "type": "n8n-nodes-base.set",
+            "typeVersion": 3.4,
+            "position": [
+                900,
+                300
+            ],
+            "notes": "Final output node - passes the transformed profile data back to the calling workflow."
         }
     ],
     "connections": {
-        "Execute Workflow Trigger": {
+        "When Called by Another Workflow": {
             "main": [
                 [
                     {
-                        "node": "Get User Profile Data",
+                        "node": "Read User Profile Sheet",
                         "type": "main",
                         "index": 0
                     }
                 ]
             ]
         },
-        "Get User Profile Data": {
+        "Read User Profile Sheet": {
             "main": [
                 [
                     {
                         "node": "Transform to Clean JSON",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Transform to Clean JSON": {
+            "main": [
+                [
+                    {
+                        "node": "Set Output",
                         "type": "main",
                         "index": 0
                     }
@@ -90,6 +121,10 @@
         "executionOrder": "v1"
     },
     "staticData": null,
+    "meta": {
+        "instanceId": "your-instance-id"
+    },
+    "pinData": {},
     "tags": [
         {
             "name": "sub-workflow"
@@ -97,6 +132,5 @@
         {
             "name": "identity"
         }
-    ],
-    "pinData": {}
+    ]
 }
