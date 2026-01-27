@@ -1,0 +1,658 @@
+{
+    "name": "SmartApply - Internship Application Workflow",
+    "nodes": [
+        {
+            "parameters": {
+                "httpMethod": "POST",
+                "path": "apply",
+                "responseMode": "lastNode",
+                "options": {}
+            },
+            "id": "webhook-trigger",
+            "name": "Webhook Trigger",
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 2,
+            "position": [
+                240,
+                300
+            ],
+            "webhookId": "smart-apply-webhook",
+            "notes": "Trigger workflow via POST request.\nExpected body: { \"url\": \"https://company.com/apply\", \"row_id\": 1 }\nAlternatively, use Google Sheets trigger below."
+        },
+        {
+            "parameters": {
+                "pollTimes": {
+                    "item": [
+                        {
+                            "mode": "everyMinute"
+                        }
+                    ]
+                },
+                "documentId": {
+                    "__rl": true,
+                    "mode": "list",
+                    "value": "YOUR_SPREADSHEET_ID"
+                },
+                "sheetName": {
+                    "__rl": true,
+                    "mode": "list",
+                    "value": "Applications"
+                },
+                "options": {
+                    "columnToWatch": "status"
+                }
+            },
+            "id": "sheets-trigger",
+            "name": "Google Sheets Trigger",
+            "type": "n8n-nodes-base.googleSheetsTrigger",
+            "typeVersion": 1,
+            "position": [
+                240,
+                500
+            ],
+            "disabled": true,
+            "credentials": {
+                "googleSheetsOAuth2Api": {
+                    "id": "YOUR_CREDENTIALS_ID",
+                    "name": "Google Sheets Account"
+                }
+            },
+            "notes": "Alternative trigger: Watch for new rows in Applications sheet.\nEnable this and disable Webhook if using Google Sheets as trigger."
+        },
+        {
+            "parameters": {
+                "rules": {
+                    "values": [
+                        {
+                            "conditions": {
+                                "options": {
+                                    "leftValue": "",
+                                    "caseSensitive": true,
+                                    "typeValidation": "strict"
+                                },
+                                "combinator": "and",
+                                "conditions": [
+                                    {
+                                        "operator": {
+                                            "type": "string",
+                                            "operation": "exists"
+                                        },
+                                        "leftValue": "={{ $json.url }}",
+                                        "rightValue": ""
+                                    }
+                                ]
+                            }
+                        }
+                    ]
+                },
+                "options": {}
+            },
+            "id": "merge-triggers",
+            "name": "Merge Triggers",
+            "type": "n8n-nodes-base.switch",
+            "typeVersion": 3,
+            "position": [
+                460,
+                400
+            ],
+            "notes": "Merges input from either Webhook or Google Sheets trigger.\nEnsures we have a URL to process."
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "={{ $env.PYTHON_API_URL }}/agent/analyze",
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={\n  \"url\": \"{{ $json.url }}\",\n  \"headless\": true,\n  \"capture_screenshot\": true,\n  \"timeout\": 30000\n}",
+                "options": {
+                    "response": {
+                        "response": {
+                            "responseFormat": "json"
+                        }
+                    },
+                    "timeout": 60000
+                }
+            },
+            "id": "analyze-page",
+            "name": "Step 1: Analyze Page",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [
+                680,
+                400
+            ],
+            "notes": "Calls Python /agent/analyze endpoint.\nReturns form fields and buttons from the page.\nSet PYTHON_API_URL in n8n environment variables."
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "options": {
+                        "leftValue": "",
+                        "caseSensitive": true,
+                        "typeValidation": "strict"
+                    },
+                    "combinator": "and",
+                    "conditions": [
+                        {
+                            "operator": {
+                                "type": "boolean",
+                                "operation": "true"
+                            },
+                            "leftValue": "={{ $json.success }}",
+                            "rightValue": ""
+                        }
+                    ]
+                }
+            },
+            "id": "check-analyze-success",
+            "name": "Check Analyze Success",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 2,
+            "position": [
+                900,
+                400
+            ],
+            "notes": "Check if page analysis succeeded.\nIf failed, skip to error logging."
+        },
+        {
+            "parameters": {
+                "workflowId": {
+                    "__rl": true,
+                    "mode": "list",
+                    "value": "IDENTITY_FETCHER_WORKFLOW_ID"
+                }
+            },
+            "id": "fetch-identity",
+            "name": "Step 2: Fetch Identity",
+            "type": "n8n-nodes-base.executeWorkflow",
+            "typeVersion": 1.1,
+            "position": [
+                1120,
+                300
+            ],
+            "notes": "Executes the 'Identity Fetcher' sub-workflow.\nReturns user profile data from Google Sheets.\nReplace IDENTITY_FETCHER_WORKFLOW_ID with actual workflow ID."
+        },
+        {
+            "parameters": {
+                "assignments": {
+                    "assignments": [
+                        {
+                            "id": "form-fields",
+                            "name": "form_fields",
+                            "type": "string",
+                            "value": "={{ JSON.stringify($('Step 1: Analyze Page').item.json.fields) }}"
+                        },
+                        {
+                            "id": "buttons",
+                            "name": "buttons",
+                            "type": "string",
+                            "value": "={{ JSON.stringify($('Step 1: Analyze Page').item.json.buttons) }}"
+                        },
+                        {
+                            "id": "user-profile",
+                            "name": "user_profile",
+                            "type": "string",
+                            "value": "={{ JSON.stringify($json.profile) }}"
+                        },
+                        {
+                            "id": "target-url",
+                            "name": "target_url",
+                            "type": "string",
+                            "value": "={{ $('Merge Triggers').item.json.url }}"
+                        }
+                    ]
+                },
+                "options": {}
+            },
+            "id": "prepare-ai-input",
+            "name": "Prepare AI Input",
+            "type": "n8n-nodes-base.set",
+            "typeVersion": 3.4,
+            "position": [
+                1340,
+                300
+            ],
+            "notes": "Combines form fields from analyze step with user profile from identity fetcher.\nPrepares context for the AI agent."
+        },
+        {
+            "parameters": {
+                "modelId": {
+                    "__rl": true,
+                    "mode": "list",
+                    "value": "gemini-2.5-flash-preview-05-20"
+                },
+                "messages": {
+                    "values": [
+                        {
+                            "content": "=You are an expert at filling online job/internship application forms.\n\nI have analyzed a web form and extracted its fields and buttons. I also have the user's profile data.\n\nFORM FIELDS:\n{{ $json.form_fields }}\n\nBUTTONS:\n{{ $json.buttons }}\n\nUSER PROFILE:\n{{ $json.user_profile }}\n\nYour task:\n1. Match each form field with the appropriate user profile data\n2. Generate a JSON array of browser actions to fill the form\n3. Include a final click action for the submit button\n\nRules:\n- Only include actions for fields you can confidently fill\n- Use the exact CSS selectors from the form fields\n- For file uploads, use file: \"resume.pdf\"\n- Output ONLY valid JSON, no explanations\n\nOutput format (JSON array):\n[\n  {\"action\": \"type\", \"selector\": \"#field-selector\", \"text\": \"value to type\"},\n  {\"action\": \"select\", \"selector\": \"#dropdown\", \"text\": \"option label\"},\n  {\"action\": \"upload\", \"selector\": \"input[type='file']\", \"file\": \"resume.pdf\"},\n  {\"action\": \"click\", \"selector\": \"button[type='submit']\"}\n]\n\nGenerate the actions JSON now:"
+                        }
+                    ]
+                },
+                "options": {
+                    "temperature": 0.2,
+                    "maxOutputTokens": 4096
+                }
+            },
+            "id": "ai-brain",
+            "name": "Step 3: AI Brain (Gemini)",
+            "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+            "typeVersion": 1,
+            "position": [
+                1560,
+                300
+            ],
+            "credentials": {
+                "googleGeminiApi": {
+                    "id": "YOUR_GEMINI_CREDENTIALS_ID",
+                    "name": "Google Gemini API"
+                }
+            },
+            "notes": "The Brain: Uses Gemini 2.5 Flash to intelligently map user data to form fields.\nOutputs a JSON array of browser actions."
+        },
+        {
+            "parameters": {
+                "jsCode": "// =============================================================================\n// Parse AI Response to Extract Actions JSON\n// =============================================================================\n// The AI returns a JSON array of actions. This code:\n// 1. Extracts the JSON from the AI response (handles markdown code blocks)\n// 2. Validates it's a proper array\n// 3. Returns the actions for the execute step\n// =============================================================================\n\nconst aiResponse = $input.first().json.text || $input.first().json.content || '';\n\n// Try to extract JSON from the response\nlet actions = [];\n\ntry {\n  // Check if response is wrapped in markdown code blocks\n  const jsonMatch = aiResponse.match(/```(?:json)?\\n?([\\s\\S]*?)\\n?```/);\n  \n  if (jsonMatch) {\n    actions = JSON.parse(jsonMatch[1].trim());\n  } else {\n    // Try parsing the whole response as JSON\n    actions = JSON.parse(aiResponse.trim());\n  }\n  \n  // Validate it's an array\n  if (!Array.isArray(actions)) {\n    throw new Error('AI response is not a JSON array');\n  }\n  \n  // Validate each action has required fields\n  for (const action of actions) {\n    if (!action.action) {\n      throw new Error('Action missing \"action\" field');\n    }\n  }\n  \n} catch (error) {\n  return [{\n    json: {\n      success: false,\n      error: `Failed to parse AI response: ${error.message}`,\n      raw_response: aiResponse\n    }\n  }];\n}\n\n// Get target URL from earlier in the workflow\nconst targetUrl = $('Merge Triggers').first().json.url;\n\nreturn [{\n  json: {\n    success: true,\n    target_url: targetUrl,\n    actions: actions,\n    action_count: actions.length\n  }\n}];"
+            },
+            "id": "parse-ai-response",
+            "name": "Parse AI Response",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                1780,
+                300
+            ],
+            "notes": "Parses the AI response to extract the JSON actions array.\nHandles markdown code blocks and validates the structure."
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "options": {
+                        "leftValue": "",
+                        "caseSensitive": true,
+                        "typeValidation": "strict"
+                    },
+                    "combinator": "and",
+                    "conditions": [
+                        {
+                            "operator": {
+                                "type": "boolean",
+                                "operation": "true"
+                            },
+                            "leftValue": "={{ $json.success }}",
+                            "rightValue": ""
+                        }
+                    ]
+                }
+            },
+            "id": "check-parse-success",
+            "name": "Check Parse Success",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 2,
+            "position": [
+                2000,
+                300
+            ],
+            "notes": "Check if AI response was parsed successfully.\nIf failed, skip to error logging."
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "={{ $env.PYTHON_API_URL }}/agent/execute",
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={\n  \"url\": \"{{ $json.target_url }}\",\n  \"actions\": {{ JSON.stringify($json.actions) }},\n  \"headless\": true,\n  \"capture_screenshot_on_error\": true\n}",
+                "options": {
+                    "response": {
+                        "response": {
+                            "responseFormat": "json"
+                        }
+                    },
+                    "timeout": 120000
+                }
+            },
+            "id": "execute-actions",
+            "name": "Step 4: Execute Actions",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [
+                2220,
+                200
+            ],
+            "notes": "Calls Python /agent/execute endpoint.\nSends the AI-generated actions to fill the form.\nTimeout set to 2 minutes for complex forms."
+        },
+        {
+            "parameters": {
+                "operation": "update",
+                "documentId": {
+                    "__rl": true,
+                    "mode": "list",
+                    "value": "YOUR_SPREADSHEET_ID"
+                },
+                "sheetName": {
+                    "__rl": true,
+                    "mode": "list",
+                    "value": "Applications"
+                },
+                "columns": {
+                    "mappingMode": "defineBelow",
+                    "value": {
+                        "status": "={{ $json.success ? 'SUCCESS' : 'ERROR' }}",
+                        "applied_at": "={{ new Date().toISOString() }}",
+                        "result_message": "={{ $json.success ? 'Application submitted successfully' : $json.error }}",
+                        "screenshot_url": "={{ $json.screenshot_base64 ? 'data:image/png;base64,' + $json.screenshot_base64 : '' }}",
+                        "actions_executed": "={{ $json.actions_executed || 0 }}"
+                    },
+                    "matchingColumns": [
+                        "row_id"
+                    ]
+                },
+                "options": {}
+            },
+            "id": "log-success",
+            "name": "Step 5: Log Success",
+            "type": "n8n-nodes-base.googleSheets",
+            "typeVersion": 4.5,
+            "position": [
+                2450,
+                200
+            ],
+            "credentials": {
+                "googleSheetsOAuth2Api": {
+                    "id": "YOUR_CREDENTIALS_ID",
+                    "name": "Google Sheets Account"
+                }
+            },
+            "notes": "Updates the Google Sheet row with success status.\nIncludes screenshot URL and timestamp."
+        },
+        {
+            "parameters": {
+                "operation": "update",
+                "documentId": {
+                    "__rl": true,
+                    "mode": "list",
+                    "value": "YOUR_SPREADSHEET_ID"
+                },
+                "sheetName": {
+                    "__rl": true,
+                    "mode": "list",
+                    "value": "Applications"
+                },
+                "columns": {
+                    "mappingMode": "defineBelow",
+                    "value": {
+                        "status": "ERROR",
+                        "applied_at": "={{ new Date().toISOString() }}",
+                        "result_message": "={{ $json.error || 'Analysis failed' }}",
+                        "screenshot_url": "",
+                        "actions_executed": "0"
+                    },
+                    "matchingColumns": [
+                        "row_id"
+                    ]
+                },
+                "options": {}
+            },
+            "id": "log-error-analyze",
+            "name": "Log Error (Analyze)",
+            "type": "n8n-nodes-base.googleSheets",
+            "typeVersion": 4.5,
+            "position": [
+                1120,
+                520
+            ],
+            "credentials": {
+                "googleSheetsOAuth2Api": {
+                    "id": "YOUR_CREDENTIALS_ID",
+                    "name": "Google Sheets Account"
+                }
+            },
+            "notes": "Logs error when page analysis fails."
+        },
+        {
+            "parameters": {
+                "operation": "update",
+                "documentId": {
+                    "__rl": true,
+                    "mode": "list",
+                    "value": "YOUR_SPREADSHEET_ID"
+                },
+                "sheetName": {
+                    "__rl": true,
+                    "mode": "list",
+                    "value": "Applications"
+                },
+                "columns": {
+                    "mappingMode": "defineBelow",
+                    "value": {
+                        "status": "ERROR",
+                        "applied_at": "={{ new Date().toISOString() }}",
+                        "result_message": "={{ $json.error || 'AI failed to generate actions' }}",
+                        "screenshot_url": "",
+                        "actions_executed": "0"
+                    },
+                    "matchingColumns": [
+                        "row_id"
+                    ]
+                },
+                "options": {}
+            },
+            "id": "log-error-ai",
+            "name": "Log Error (AI Parse)",
+            "type": "n8n-nodes-base.googleSheets",
+            "typeVersion": 4.5,
+            "position": [
+                2220,
+                420
+            ],
+            "credentials": {
+                "googleSheetsOAuth2Api": {
+                    "id": "YOUR_CREDENTIALS_ID",
+                    "name": "Google Sheets Account"
+                }
+            },
+            "notes": "Logs error when AI response parsing fails."
+        },
+        {
+            "parameters": {
+                "respondWith": "json",
+                "responseBody": "={{ $json }}"
+            },
+            "id": "webhook-response",
+            "name": "Webhook Response",
+            "type": "n8n-nodes-base.respondToWebhook",
+            "typeVersion": 1.1,
+            "position": [
+                2680,
+                300
+            ],
+            "notes": "Returns final result to webhook caller (if using webhook trigger)."
+        }
+    ],
+    "connections": {
+        "Webhook Trigger": {
+            "main": [
+                [
+                    {
+                        "node": "Merge Triggers",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Google Sheets Trigger": {
+            "main": [
+                [
+                    {
+                        "node": "Merge Triggers",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Merge Triggers": {
+            "main": [
+                [
+                    {
+                        "node": "Step 1: Analyze Page",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Step 1: Analyze Page": {
+            "main": [
+                [
+                    {
+                        "node": "Check Analyze Success",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Check Analyze Success": {
+            "main": [
+                [
+                    {
+                        "node": "Step 2: Fetch Identity",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Log Error (Analyze)",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Step 2: Fetch Identity": {
+            "main": [
+                [
+                    {
+                        "node": "Prepare AI Input",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Prepare AI Input": {
+            "main": [
+                [
+                    {
+                        "node": "Step 3: AI Brain (Gemini)",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Step 3: AI Brain (Gemini)": {
+            "main": [
+                [
+                    {
+                        "node": "Parse AI Response",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Parse AI Response": {
+            "main": [
+                [
+                    {
+                        "node": "Check Parse Success",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Check Parse Success": {
+            "main": [
+                [
+                    {
+                        "node": "Step 4: Execute Actions",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Log Error (AI Parse)",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Step 4: Execute Actions": {
+            "main": [
+                [
+                    {
+                        "node": "Step 5: Log Success",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Step 5: Log Success": {
+            "main": [
+                [
+                    {
+                        "node": "Webhook Response",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Log Error (Analyze)": {
+            "main": [
+                [
+                    {
+                        "node": "Webhook Response",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Log Error (AI Parse)": {
+            "main": [
+                [
+                    {
+                        "node": "Webhook Response",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    },
+    "settings": {
+        "executionOrder": "v1",
+        "errorWorkflow": ""
+    },
+    "staticData": null,
+    "meta": {
+        "instanceId": "your-instance-id"
+    },
+    "pinData": {},
+    "tags": [
+        {
+            "name": "main-workflow"
+        },
+        {
+            "name": "smart-apply"
+        }
+    ]
+}
