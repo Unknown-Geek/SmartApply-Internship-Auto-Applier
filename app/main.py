@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 
 from app.config import get_settings
 from app.agent.web_agent import WebAgent, create_web_agent
+from app.services.agent_service import router as agent_service_router
 
 
 # =============================================================================
@@ -105,6 +106,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# -----------------------------------------------------------------------------
+# Include Routers
+# -----------------------------------------------------------------------------
+# Agent execution engine with /agent/analyze and /agent/execute endpoints
+app.include_router(agent_service_router)
 
 
 # =============================================================================
