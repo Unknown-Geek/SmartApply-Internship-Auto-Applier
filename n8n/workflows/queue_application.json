@@ -42,6 +42,18 @@
                             "value": "={{ new Date().toISOString() }}"
                         },
                         {
+                            "id": "company",
+                            "name": "company",
+                            "type": "string",
+                            "value": "={{ $json.body.company || '' }}"
+                        },
+                        {
+                            "id": "title",
+                            "name": "title",
+                            "type": "string",
+                            "value": "={{ $json.body.title || '' }}"
+                        },
+                        {
                             "id": "source",
                             "name": "source",
                             "type": "string",
@@ -79,6 +91,8 @@
                     "mappingMode": "defineBelow",
                     "value": {
                         "url": "={{ $json.url }}",
+                        "company": "={{ $json.company }}",
+                        "title": "={{ $json.title }}",
                         "status": "={{ $json.status }}",
                         "applied_at": "={{ $json.queued_at }}",
                         "result": "Added from {{ $json.source }}"

@@ -227,6 +227,19 @@ class SmartApplyBot:
         if urls:
             url = urls[0]  # Use the first URL found
             
+            # Try to extract company and title from the specific forwarded format
+            # Format: Title: ..., Company: ..., ... Apply Link: http...
+            company = ""
+            title = ""
+            
+            title_match = re.search(r"Title:\s*(.+)", text, re.IGNORECASE)
+            if title_match:
+                title = title_match.group(1).strip()
+                
+            company_match = re.search(r"Company:\s*(.+)", text, re.IGNORECASE)
+            if company_match:
+                company = company_match.group(1).strip()
+            
             # Check if we should queue the URL instead of running immediately
             settings = get_settings()
             if settings.smartapply_queue_webhook:
@@ -234,13 +247,22 @@ class SmartApplyBot:
                     async with httpx.AsyncClient() as client:
                         resp = await client.post(
                             settings.smartapply_queue_webhook,
-                            json={"url": url, "source": "Telegram Bot"},
+                            json={
+                                "url": url, 
+                                "source": "Telegram Bot",
+                                "company": company,
+                                "title": title
+                            },
                             timeout=10.0
                         )
                         if resp.status_code == 200:
+                            details = f"URL: `{url}`\n"
+                            if title and company:
+                                details = f"📝 *{title}* at *{company}*\n" + details
+                                
                             await update.message.reply_text(
                                 f"📥 *Added to Queue!*\n\n"
-                                f"URL: `{url}`\n"
+                                f"{details}"
                                 f"The batch processor will handle this application later.\n"
                                 f"_Use /apply <url> if you want to force an immediate run._",
                                 parse_mode="Markdown"
