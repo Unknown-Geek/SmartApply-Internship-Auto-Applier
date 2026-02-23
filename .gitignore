@@ -69,3 +69,4 @@ htmlcov/
 logs/
 tmp/
 temp/
+service_account.json
