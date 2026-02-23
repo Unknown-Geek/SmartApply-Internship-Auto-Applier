@@ -254,6 +254,23 @@ async def ingest_profile(request: ProfileIngestRequest):
     return {"success": "error" not in data, "data": data}
 
 
+@app.post("/profile/ingest/direct", tags=["Profile"])
+async def ingest_profile_direct(body: dict):
+    """
+    Directly ingest structured profile key-value pairs.
+    Accepts any flat JSON object like {"Full Name": "...", "Email": "..."}.
+    Each key-value pair is stored directly into the user_profile table.
+    """
+    count = 0
+    for key, value in body.items():
+        if isinstance(value, (dict, list)):
+            import json as _json
+            value = _json.dumps(value)
+        set_profile(str(key), str(value))
+        count += 1
+    return {"success": True, "fields_stored": count}
+
+
 @app.get("/profile", tags=["Profile"])
 async def get_profile():
     """Return all stored profile fields."""

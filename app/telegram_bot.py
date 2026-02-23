@@ -152,7 +152,7 @@ class SmartApplyBot:
             )
             return
 
-        lines = ["<b>Your Profile:</b>\n"]
+        lines = []
         for key, value in profile.items():
             val_str = str(value)
             # Escape HTML characters first
@@ -161,13 +161,19 @@ class SmartApplyBot:
                 val_str = val_str[:100] + "..."
             lines.append(f"• <b>{key}:</b> {val_str}")
 
-        # Send in chunks if it gets too long for Telegram (max 4096)
-        full_message = "\n".join(lines)
-        if len(full_message) > 4000:
-            for i in range(0, len(full_message), 4000):
-                await update.message.reply_text(full_message[i:i+4000], parse_mode="HTML")
-        else:
-            await update.message.reply_text(full_message, parse_mode="HTML")
+        # Send in chunks splitting on line boundaries (not mid-HTML-tag)
+        chunks = []
+        current_chunk = "<b>Your Profile:</b>\n"
+        for line in lines:
+            if len(current_chunk) + len(line) + 1 > 3900:
+                chunks.append(current_chunk)
+                current_chunk = ""
+            current_chunk += line + "\n"
+        if current_chunk.strip():
+            chunks.append(current_chunk)
+
+        for chunk in chunks:
+            await update.message.reply_text(chunk.strip(), parse_mode="HTML")
 
     async def _cmd_cancel(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /cancel command — cancel the current agent task."""
