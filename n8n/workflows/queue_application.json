@@ -1,0 +1,171 @@
+{
+    "name": "SmartApply - Queue Application",
+    "nodes": [
+        {
+            "parameters": {
+                "httpMethod": "POST",
+                "path": "smartapply-queue",
+                "responseMode": "lastNode",
+                "options": {}
+            },
+            "id": "webhook-trigger",
+            "name": "Queue Webhook",
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 2,
+            "position": [
+                200,
+                300
+            ],
+            "webhookId": "smartapply-queue",
+            "notes": "Receives URLs to queue for batch processing.\nExpected body: { \"url\": \"https://...\", \"source\": \"Telegram Bot\" }"
+        },
+        {
+            "parameters": {
+                "assignments": {
+                    "assignments": [
+                        {
+                            "id": "url",
+                            "name": "url",
+                            "type": "string",
+                            "value": "={{ $json.body.url }}"
+                        },
+                        {
+                            "id": "status",
+                            "name": "status",
+                            "type": "string",
+                            "value": "PENDING"
+                        },
+                        {
+                            "id": "queued_at",
+                            "name": "queued_at",
+                            "type": "string",
+                            "value": "={{ new Date().toISOString() }}"
+                        },
+                        {
+                            "id": "source",
+                            "name": "source",
+                            "type": "string",
+                            "value": "={{ $json.body.source || 'Manual' }}"
+                        }
+                    ]
+                },
+                "options": {}
+            },
+            "id": "prepare-row",
+            "name": "Prepare Row",
+            "type": "n8n-nodes-base.set",
+            "typeVersion": 3.4,
+            "position": [
+                440,
+                300
+            ],
+            "notes": "Sets initial status to PENDING."
+        },
+        {
+            "parameters": {
+                "operation": "append",
+                "documentId": {
+                    "__rl": true,
+                    "value": "YOUR_SPREADSHEET_ID",
+                    "mode": "id"
+                },
+                "sheetName": {
+                    "__rl": true,
+                    "value": "Applications",
+                    "mode": "list",
+                    "cachedResultName": "Applications"
+                },
+                "columns": {
+                    "mappingMode": "defineBelow",
+                    "value": {
+                        "url": "={{ $json.url }}",
+                        "status": "={{ $json.status }}",
+                        "applied_at": "={{ $json.queued_at }}",
+                        "result": "Added from {{ $json.source }}"
+                    },
+                    "matchingColumns": []
+                },
+                "options": {}
+            },
+            "id": "append-to-sheet",
+            "name": "Add to Queue Sheet",
+            "type": "n8n-nodes-base.googleSheets",
+            "typeVersion": 4.5,
+            "position": [
+                660,
+                300
+            ],
+            "credentials": {
+                "googleSheetsOAuth2Api": {
+                    "id": "YOUR_CREDENTIALS_ID",
+                    "name": "Google Sheets Account"
+                }
+            },
+            "notes": "Appends the new URL to the 'Applications' sheet."
+        },
+        {
+            "parameters": {
+                "respondWith": "json",
+                "responseBody": "={\n  \"success\": true,\n  \"message\": \"URL queued successfully!\",\n  \"url\": \"{{ $('Prepare Row').item.json.url }}\"\n}"
+            },
+            "id": "respond-ok",
+            "name": "Respond OK",
+            "type": "n8n-nodes-base.respondToWebhook",
+            "typeVersion": 1.1,
+            "position": [
+                880,
+                300
+            ]
+        }
+    ],
+    "connections": {
+        "Queue Webhook": {
+            "main": [
+                [
+                    {
+                        "node": "Prepare Row",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Prepare Row": {
+            "main": [
+                [
+                    {
+                        "node": "Add to Queue Sheet",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Add to Queue Sheet": {
+            "main": [
+                [
+                    {
+                        "node": "Respond OK",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    },
+    "settings": {
+        "executionOrder": "v1"
+    },
+    "meta": {
+        "templateCredsSetupCompleted": true
+    },
+    "pinData": {},
+    "tags": [
+        {
+            "name": "smart-apply"
+        },
+        {
+            "name": "queue"
+        }
+    ]
+}

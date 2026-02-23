@@ -26,14 +26,22 @@ Auto-syncs profile from Google Sheets every 6 hours.
 Every 6 Hours → Run sync_profile.py → Notify Success/Failure via Telegram
 ```
 
-### 4. Notification Router (`notification_router.json`)
+### 4. Queue Application (`queue_application.json`)
+Webook endpoint to queue forwarded Telegram links for batch processing.
+```
+Webhook → Prepare Row → Add to Queue Sheet → Respond OK
+```
+**Webhook:** `POST /webhook/smartapply-queue` with `{ "url": "https://...", "source": "Telegram Bot" }`
+**Sheet columns:** `url, status, applied_at, result`
+
+### 5. Notification Router (`notification_router.json`)
 Receives webhook notifications, routes by type to Slack + Email.
 ```
 Webhook → Route by Type (error/success/info) → Slack + Email
 ```
 **Webhook:** `POST /webhook/smartapply-notify` with `{ "type": "error", "message": "..." }`
 
-### 5. Application Logger (`application_logger.json`)
+### 6. Application Logger (`application_logger.json`)
 Logs application results to a Google Sheet tracking spreadsheet.
 ```
 Webhook → Normalize Data → Append to Sheet → Telegram Summary (if success)
@@ -51,5 +59,7 @@ Webhook → Normalize Data → Append to Sheet → Telegram Summary (if success)
    | `TELEGRAM_BOT_TOKEN` | Your Telegram bot token |
    | `TELEGRAM_CHAT_ID` | Your Telegram chat ID |
    | `ALERT_EMAIL` | Email for error alerts |
-3. **Configure credentials:** Google Sheets OAuth2, Slack Bot (if using notifications)
-4. **Create Google Sheets** with the column structures described above
+3. **Configure the SmartApply Server (Server `.env`):**
+   - Set `SMARTAPPLY_QUEUE_WEBHOOK=https://<your-n8n>/webhook/smartapply-queue`
+4. **Configure credentials:** Google Sheets OAuth2, Slack Bot (if using notifications)
+5. **Create Google Sheets** with the column structures described above

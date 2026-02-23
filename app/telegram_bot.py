@@ -15,6 +15,7 @@
 import asyncio
 import logging
 import re
+import httpx
 from typing import Optional
 
 from telegram import Update, BotCommand
@@ -176,6 +177,31 @@ class SmartApplyBot:
         """Handle /help command."""
         await self._cmd_start(update, context)
 
+    async def _cmd_apply(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Handle /apply <url> command for immediate execution."""
+        if not self._is_authorized(update):
+            return
+
+        if not context.args:
+            await update.message.reply_text("Usage: /apply <url>")
+            return
+
+        url = context.args[0]
+        if not URL_PATTERN.match(url):
+            await update.message.reply_text("Invalid URL format.")
+            return
+
+        if self._active_task and not self._active_task.done():
+            await update.message.reply_text("⚠️ An agent task is already running. Use /cancel to stop it first.")
+            return
+
+        await update.message.reply_text(
+            f"🚀 *Forcing immediate run!* Starting application process for:\n`{url}`",
+            parse_mode="Markdown",
+        )
+
+        self._active_task = asyncio.create_task(self._run_application(url))
+
     # =========================================================================
     # Message Handlers
     # =========================================================================
@@ -200,6 +226,31 @@ class SmartApplyBot:
         urls = URL_PATTERN.findall(text)
         if urls:
             url = urls[0]  # Use the first URL found
+            
+            # Check if we should queue the URL instead of running immediately
+            settings = get_settings()
+            if settings.smartapply_queue_webhook:
+                try:
+                    async with httpx.AsyncClient() as client:
+                        resp = await client.post(
+                            settings.smartapply_queue_webhook,
+                            json={"url": url, "source": "Telegram Bot"},
+                            timeout=10.0
+                        )
+                        if resp.status_code == 200:
+                            await update.message.reply_text(
+                                f"📥 *Added to Queue!*\n\n"
+                                f"URL: `{url}`\n"
+                                f"The batch processor will handle this application later.\n"
+                                f"_Use /apply <url> if you want to force an immediate run._",
+                                parse_mode="Markdown"
+                            )
+                        else:
+                            await update.message.reply_text(f"❌ Failed to queue URL (Status: {resp.status_code})")
+                except Exception as e:
+                    logger.exception("Queue webhook error")
+                    await update.message.reply_text(f"❌ Error contacting queue webhook: {e}")
+                return
 
             if self._active_task and not self._active_task.done():
                 await update.message.reply_text(
@@ -260,6 +311,7 @@ class SmartApplyBot:
         self.app.add_handler(CommandHandler("start", self._cmd_start))
         self.app.add_handler(CommandHandler("status", self._cmd_status))
         self.app.add_handler(CommandHandler("profile", self._cmd_profile))
+        self.app.add_handler(CommandHandler("apply", self._cmd_apply))
         self.app.add_handler(CommandHandler("cancel", self._cmd_cancel))
         self.app.add_handler(CommandHandler("help", self._cmd_help))
         self.app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self._handle_message))
@@ -269,6 +321,7 @@ class SmartApplyBot:
             BotCommand("start", "Welcome & help"),
             BotCommand("status", "Agent status & stats"),
             BotCommand("profile", "View stored profile"),
+            BotCommand("apply", "Force immediate application for a URL"),
             BotCommand("cancel", "Cancel current task"),
             BotCommand("help", "Show help"),
         ])

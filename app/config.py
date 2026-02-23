@@ -70,6 +70,11 @@ class Settings(BaseSettings):
     telegram_bot_token: str = ""           # Bot token from @BotFather
     telegram_chat_id: str = ""             # Authorized user's chat ID
 
+    # -------------------------------------------------------------------------
+    # n8n Queue Integration (Optional)
+    # -------------------------------------------------------------------------
+    smartapply_queue_webhook: str = ""     # n8n webhook URL to queue incoming links
+
     @property
     def telegram_enabled(self) -> bool:
         """True if Telegram bot is configured."""
