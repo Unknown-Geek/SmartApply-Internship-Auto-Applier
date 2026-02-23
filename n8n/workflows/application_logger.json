@@ -1,0 +1,289 @@
+{
+    "name": "SmartApply - Application Logger",
+    "nodes": [
+        {
+            "parameters": {
+                "httpMethod": "POST",
+                "path": "smartapply-log",
+                "responseMode": "responseNode",
+                "options": {}
+            },
+            "id": "webhook-trigger",
+            "name": "Receive Log Entry",
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 2,
+            "position": [
+                200,
+                300
+            ],
+            "webhookId": "smartapply-log",
+            "notes": "Receives application results from SmartApply.\nExpected body: { \"url\": \"...\", \"company\": \"...\", \"title\": \"...\", \"status\": \"success|failed|partial\", \"details\": \"...\", \"fields_filled\": 0, \"issues\": [] }"
+        },
+        {
+            "parameters": {
+                "assignments": {
+                    "assignments": [
+                        {
+                            "id": "timestamp",
+                            "name": "timestamp",
+                            "type": "string",
+                            "value": "={{ new Date().toISOString() }}"
+                        },
+                        {
+                            "id": "url",
+                            "name": "url",
+                            "type": "string",
+                            "value": "={{ $json.body.url || '' }}"
+                        },
+                        {
+                            "id": "company",
+                            "name": "company",
+                            "type": "string",
+                            "value": "={{ $json.body.company || 'Unknown' }}"
+                        },
+                        {
+                            "id": "title",
+                            "name": "title",
+                            "type": "string",
+                            "value": "={{ $json.body.title || 'Unknown' }}"
+                        },
+                        {
+                            "id": "status",
+                            "name": "status",
+                            "type": "string",
+                            "value": "={{ $json.body.status || 'unknown' }}"
+                        },
+                        {
+                            "id": "details",
+                            "name": "details",
+                            "type": "string",
+                            "value": "={{ $json.body.details || '' }}"
+                        },
+                        {
+                            "id": "fields_filled",
+                            "name": "fields_filled",
+                            "type": "number",
+                            "value": "={{ $json.body.fields_filled || 0 }}"
+                        },
+                        {
+                            "id": "issues",
+                            "name": "issues",
+                            "type": "string",
+                            "value": "={{ ($json.body.issues || []).join(', ') }}"
+                        }
+                    ]
+                },
+                "options": {}
+            },
+            "id": "prepare-row",
+            "name": "Prepare Row Data",
+            "type": "n8n-nodes-base.set",
+            "typeVersion": 3.4,
+            "position": [
+                440,
+                300
+            ],
+            "notes": "Normalizes the incoming data into a clean row for the spreadsheet."
+        },
+        {
+            "parameters": {
+                "operation": "append",
+                "documentId": {
+                    "__rl": true,
+                    "value": "YOUR_SPREADSHEET_ID",
+                    "mode": "id"
+                },
+                "sheetName": {
+                    "__rl": true,
+                    "value": "Application Log",
+                    "mode": "list",
+                    "cachedResultName": "Application Log"
+                },
+                "columns": {
+                    "mappingMode": "autoMapInputData",
+                    "value": {}
+                },
+                "options": {}
+            },
+            "id": "append-to-sheet",
+            "name": "Log to Google Sheets",
+            "type": "n8n-nodes-base.googleSheets",
+            "typeVersion": 4.5,
+            "position": [
+                680,
+                300
+            ],
+            "credentials": {
+                "googleSheetsOAuth2Api": {
+                    "id": "YOUR_CREDENTIALS_ID",
+                    "name": "Google Sheets Account"
+                }
+            },
+            "notes": "Appends a new row to the 'Application Log' sheet.\nCreate the sheet with columns: timestamp, url, company, title, status, details, fields_filled, issues"
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "combinator": "and",
+                    "conditions": [
+                        {
+                            "operator": {
+                                "type": "string",
+                                "operation": "equals"
+                            },
+                            "leftValue": "={{ $('Prepare Row Data').item.json.status }}",
+                            "rightValue": "success"
+                        }
+                    ]
+                }
+            },
+            "id": "is-success",
+            "name": "Is Success?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 2,
+            "position": [
+                920,
+                300
+            ],
+            "notes": "Only increment counter and send summary for successful applications."
+        },
+        {
+            "parameters": {
+                "jsCode": "// Read current stats from previous executions\nconst today = new Date().toISOString().split('T')[0];\nconst company = $('Prepare Row Data').first().json.company;\nconst title = $('Prepare Row Data').first().json.title;\n\nreturn [{\n  json: {\n    message: `📊 Application logged:\\n• ${title} at ${company}\\n• Status: SUCCESS\\n• Date: ${today}`,\n    success: true\n  }\n}];"
+            },
+            "id": "build-summary",
+            "name": "Build Summary",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                1160,
+                200
+            ],
+            "notes": "Generates a summary message for the successful application."
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={\n  \"chat_id\": \"{{ $env.TELEGRAM_CHAT_ID }}\",\n  \"text\": \"{{ $json.message }}\",\n  \"parse_mode\": \"Markdown\"\n}",
+                "options": {}
+            },
+            "id": "notify-telegram",
+            "name": "Notify via Telegram",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [
+                1400,
+                200
+            ],
+            "notes": "Sends a Telegram summary for successful logs.\nSet TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in n8n env vars."
+        },
+        {
+            "parameters": {
+                "respondWith": "json",
+                "responseBody": "={\"logged\": true, \"status\": \"{{ $('Prepare Row Data').item.json.status }}\"}"
+            },
+            "id": "respond-ok",
+            "name": "Respond OK",
+            "type": "n8n-nodes-base.respondToWebhook",
+            "typeVersion": 1.1,
+            "position": [
+                1160,
+                420
+            ],
+            "notes": "Returns HTTP 200 to acknowledge receipt."
+        }
+    ],
+    "connections": {
+        "Receive Log Entry": {
+            "main": [
+                [
+                    {
+                        "node": "Prepare Row Data",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Prepare Row Data": {
+            "main": [
+                [
+                    {
+                        "node": "Log to Google Sheets",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Log to Google Sheets": {
+            "main": [
+                [
+                    {
+                        "node": "Is Success?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Is Success?": {
+            "main": [
+                [
+                    {
+                        "node": "Build Summary",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Respond OK",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Build Summary": {
+            "main": [
+                [
+                    {
+                        "node": "Notify via Telegram",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Notify via Telegram": {
+            "main": [
+                [
+                    {
+                        "node": "Respond OK",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    },
+    "settings": {
+        "executionOrder": "v1"
+    },
+    "meta": {
+        "templateCredsSetupCompleted": true
+    },
+    "pinData": {},
+    "tags": [
+        {
+            "name": "smart-apply"
+        },
+        {
+            "name": "logging"
+        }
+    ]
+}

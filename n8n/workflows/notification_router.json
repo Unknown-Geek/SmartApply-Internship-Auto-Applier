@@ -1,0 +1,277 @@
+{
+    "name": "SmartApply - Notification Router",
+    "nodes": [
+        {
+            "parameters": {
+                "httpMethod": "POST",
+                "path": "smartapply-notify",
+                "responseMode": "responseNode",
+                "options": {}
+            },
+            "id": "webhook-trigger",
+            "name": "Receive Notification",
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 2,
+            "position": [
+                200,
+                300
+            ],
+            "webhookId": "smartapply-notify",
+            "notes": "Receives notifications from SmartApply.\nExpected body: { \"type\": \"info|success|error|question\", \"message\": \"...\", \"url\": \"...\" }"
+        },
+        {
+            "parameters": {
+                "rules": {
+                    "values": [
+                        {
+                            "conditions": {
+                                "combinator": "and",
+                                "conditions": [
+                                    {
+                                        "operator": {
+                                            "type": "string",
+                                            "operation": "equals"
+                                        },
+                                        "leftValue": "={{ $json.body.type }}",
+                                        "rightValue": "error"
+                                    }
+                                ]
+                            },
+                            "outputKey": "error"
+                        },
+                        {
+                            "conditions": {
+                                "combinator": "and",
+                                "conditions": [
+                                    {
+                                        "operator": {
+                                            "type": "string",
+                                            "operation": "equals"
+                                        },
+                                        "leftValue": "={{ $json.body.type }}",
+                                        "rightValue": "success"
+                                    }
+                                ]
+                            },
+                            "outputKey": "success"
+                        }
+                    ]
+                },
+                "options": {
+                    "fallbackOutput": "extra"
+                }
+            },
+            "id": "route-by-type",
+            "name": "Route by Type",
+            "type": "n8n-nodes-base.switch",
+            "typeVersion": 3,
+            "position": [
+                440,
+                300
+            ],
+            "notes": "Routes notifications based on type:\n- error → Slack + Email\n- success → Slack only\n- other → Slack only"
+        },
+        {
+            "parameters": {
+                "channel": "#smartapply",
+                "text": "=:rotating_light: *SmartApply Error*\n\n{{ $json.body.message }}\n\nURL: {{ $json.body.url || 'N/A' }}\nTime: {{ new Date().toISOString() }}",
+                "otherOptions": {}
+            },
+            "id": "slack-error",
+            "name": "Slack (Error)",
+            "type": "n8n-nodes-base.slack",
+            "typeVersion": 2.2,
+            "position": [
+                700,
+                180
+            ],
+            "credentials": {
+                "slackApi": {
+                    "id": "YOUR_SLACK_CREDENTIALS_ID",
+                    "name": "Slack Account"
+                }
+            },
+            "notes": "Posts error alerts to #smartapply Slack channel.\nConfigure your Slack Bot credentials."
+        },
+        {
+            "parameters": {
+                "fromEmail": "smartapply@yourdomain.com",
+                "toEmail": "={{ $env.ALERT_EMAIL || 'your@email.com' }}",
+                "subject": "=🚨 SmartApply Error: {{ $json.body.message.substring(0, 60) }}",
+                "text": "=SmartApply encountered an error:\n\n{{ $json.body.message }}\n\nURL: {{ $json.body.url || 'N/A' }}\nTime: {{ new Date().toISOString() }}",
+                "options": {}
+            },
+            "id": "email-error",
+            "name": "Email (Error)",
+            "type": "n8n-nodes-base.emailSend",
+            "typeVersion": 2.1,
+            "position": [
+                940,
+                180
+            ],
+            "credentials": {
+                "smtp": {
+                    "id": "YOUR_SMTP_CREDENTIALS_ID",
+                    "name": "SMTP Account"
+                }
+            },
+            "notes": "Sends email alert for errors.\nConfigure SMTP credentials.\nSet ALERT_EMAIL env var in n8n."
+        },
+        {
+            "parameters": {
+                "channel": "#smartapply",
+                "text": "=:white_check_mark: *SmartApply Success*\n\n{{ $json.body.message }}\n\nURL: {{ $json.body.url || 'N/A' }}",
+                "otherOptions": {}
+            },
+            "id": "slack-success",
+            "name": "Slack (Success)",
+            "type": "n8n-nodes-base.slack",
+            "typeVersion": 2.2,
+            "position": [
+                700,
+                380
+            ],
+            "credentials": {
+                "slackApi": {
+                    "id": "YOUR_SLACK_CREDENTIALS_ID",
+                    "name": "Slack Account"
+                }
+            },
+            "notes": "Posts success notifications to Slack."
+        },
+        {
+            "parameters": {
+                "channel": "#smartapply",
+                "text": "=:information_source: *SmartApply Update*\n\n{{ $json.body.message }}",
+                "otherOptions": {}
+            },
+            "id": "slack-info",
+            "name": "Slack (Info)",
+            "type": "n8n-nodes-base.slack",
+            "typeVersion": 2.2,
+            "position": [
+                700,
+                560
+            ],
+            "credentials": {
+                "slackApi": {
+                    "id": "YOUR_SLACK_CREDENTIALS_ID",
+                    "name": "Slack Account"
+                }
+            },
+            "notes": "Posts general info/updates to Slack."
+        },
+        {
+            "parameters": {
+                "respondWith": "json",
+                "responseBody": "={\"received\": true}"
+            },
+            "id": "respond-ok",
+            "name": "Respond OK",
+            "type": "n8n-nodes-base.respondToWebhook",
+            "typeVersion": 1.1,
+            "position": [
+                1140,
+                380
+            ],
+            "notes": "Returns HTTP 200 to acknowledge receipt."
+        }
+    ],
+    "connections": {
+        "Receive Notification": {
+            "main": [
+                [
+                    {
+                        "node": "Route by Type",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Route by Type": {
+            "main": [
+                [
+                    {
+                        "node": "Slack (Error)",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Slack (Success)",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Slack (Info)",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Slack (Error)": {
+            "main": [
+                [
+                    {
+                        "node": "Email (Error)",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Email (Error)": {
+            "main": [
+                [
+                    {
+                        "node": "Respond OK",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Slack (Success)": {
+            "main": [
+                [
+                    {
+                        "node": "Respond OK",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Slack (Info)": {
+            "main": [
+                [
+                    {
+                        "node": "Respond OK",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    },
+    "settings": {
+        "executionOrder": "v1"
+    },
+    "meta": {
+        "templateCredsSetupCompleted": true
+    },
+    "pinData": {},
+    "tags": [
+        {
+            "name": "smart-apply"
+        },
+        {
+            "name": "notifications"
+        }
+    ]
+}

@@ -1,41 +1,55 @@
 # n8n Workflows
 
-Reusable n8n sub-workflows for SmartApply.
+Optional n8n workflows for SmartApply automation.
 
-> **Note:** The main application pipeline now runs through the **Telegram bot + Cerebras agent** directly.
-> These n8n workflows serve as **optional utility modules** that can be called via the n8n API.
+> The **Telegram bot + Cerebras agent** handles applications autonomously.
+> These workflows add **batch processing, monitoring, and logging** on top.
 
 ## Workflows
 
-### Identity Fetcher (`identity_fetcher.json`)
-
-Sub-workflow that fetches user profile data from Google Sheets and transforms it into clean JSON.
-
+### 1. Identity Fetcher (`identity_fetcher.json`)
+Sub-workflow that fetches user profile from Google Sheets → clean JSON.
 ```
-Execute Workflow Trigger → Google Sheets (Read) → Code (Transform) → Output JSON
+Trigger → Read profileData Sheet → Transform to JSON → Output
 ```
 
-**Google Sheet format** (`profileData` sheet):
+### 2. Batch Applications (`batch_applications.json`) ⭐
+Reads PENDING URLs from a Google Sheet and sends each to the SmartApply agent.
+```
+Schedule (hourly) → Read Pending Jobs → Apply via Agent → Update Sheet Status → Summary
+```
+**Sheet columns:** `row_id, url, company, title, status, applied_at, result`
 
-| Key | Value |
-|-----|-------|
-| Full Name | John Doe |
-| Personal Email | john@example.com |
-| Mobile Number | +91 1234567890 |
-| LinkedIn URL | https://linkedin.com/in/johndoe |
+### 3. Scheduled Profile Sync (`scheduled_profile_sync.json`)
+Auto-syncs profile from Google Sheets every 6 hours.
+```
+Every 6 Hours → Run sync_profile.py → Notify Success/Failure via Telegram
+```
 
-**Setup:**
-1. Import `identity_fetcher.json` into n8n
-2. Configure Google Sheets OAuth2 credentials
-3. Select your spreadsheet and `profileData` sheet
+### 4. Notification Router (`notification_router.json`)
+Receives webhook notifications, routes by type to Slack + Email.
+```
+Webhook → Route by Type (error/success/info) → Slack + Email
+```
+**Webhook:** `POST /webhook/smartapply-notify` with `{ "type": "error", "message": "..." }`
 
-## When to Use n8n
+### 5. Application Logger (`application_logger.json`)
+Logs application results to a Google Sheet tracking spreadsheet.
+```
+Webhook → Normalize Data → Append to Sheet → Telegram Summary (if success)
+```
+**Webhook:** `POST /webhook/smartapply-log` with `{ "url": "...", "status": "success", ... }`
+**Sheet columns:** `timestamp, url, company, title, status, details, fields_filled, issues`
 
-The SmartApply agent handles applications autonomously via Telegram. Use n8n workflows if you want to:
+## Setup
 
-- **Batch trigger** applications from a spreadsheet
-- **Schedule** periodic profile syncs
-- **Chain** SmartApply with other automation tools
-- **Log results** to external services (Slack, email, sheets)
-
-To call the SmartApply API from n8n, use HTTP Request nodes pointed at `http://localhost:8000/agent/run`.
+1. **Import workflows** into n8n (Workflows → Import from File)
+2. **Set n8n environment variables:**
+   | Variable | Description |
+   |----------|-------------|
+   | `SMARTAPPLY_API_URL` | `http://localhost:8000` |
+   | `TELEGRAM_BOT_TOKEN` | Your Telegram bot token |
+   | `TELEGRAM_CHAT_ID` | Your Telegram chat ID |
+   | `ALERT_EMAIL` | Email for error alerts |
+3. **Configure credentials:** Google Sheets OAuth2, Slack Bot (if using notifications)
+4. **Create Google Sheets** with the column structures described above

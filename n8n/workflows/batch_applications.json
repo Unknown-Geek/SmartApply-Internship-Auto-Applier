@@ -1,0 +1,286 @@
+{
+    "name": "SmartApply - Batch Applications",
+    "nodes": [
+        {
+            "parameters": {
+                "rule": {
+                    "interval": [
+                        {
+                            "field": "hours",
+                            "hoursInterval": 1
+                        }
+                    ]
+                }
+            },
+            "id": "schedule-trigger",
+            "name": "Schedule Trigger",
+            "type": "n8n-nodes-base.scheduleTrigger",
+            "typeVersion": 1.2,
+            "position": [
+                200,
+                300
+            ],
+            "notes": "Runs every hour. Adjust interval as needed.\nAlternatively, use Webhook Trigger below for on-demand batch runs."
+        },
+        {
+            "parameters": {
+                "httpMethod": "POST",
+                "path": "batch-apply",
+                "responseMode": "lastNode",
+                "options": {}
+            },
+            "id": "webhook-trigger",
+            "name": "Webhook Trigger",
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 2,
+            "position": [
+                200,
+                500
+            ],
+            "disabled": true,
+            "webhookId": "smart-apply-batch",
+            "notes": "Manual trigger. POST to /webhook/batch-apply.\nEnable this and disable Schedule Trigger for on-demand runs."
+        },
+        {
+            "parameters": {
+                "documentId": {
+                    "__rl": true,
+                    "value": "YOUR_SPREADSHEET_ID",
+                    "mode": "id"
+                },
+                "sheetName": {
+                    "__rl": true,
+                    "value": "Applications",
+                    "mode": "list",
+                    "cachedResultName": "Applications"
+                },
+                "filters": {
+                    "conditions": [
+                        {
+                            "leftValue": "={{ $json.status }}",
+                            "rightValue": "PENDING",
+                            "operator": {
+                                "type": "string",
+                                "operation": "equals"
+                            }
+                        }
+                    ]
+                },
+                "options": {}
+            },
+            "id": "read-pending-jobs",
+            "name": "Read Pending Jobs",
+            "type": "n8n-nodes-base.googleSheets",
+            "typeVersion": 4.5,
+            "position": [
+                440,
+                400
+            ],
+            "credentials": {
+                "googleSheetsOAuth2Api": {
+                    "id": "YOUR_CREDENTIALS_ID",
+                    "name": "Google Sheets Account"
+                }
+            },
+            "notes": "Reads rows with status=PENDING from Applications sheet.\nExpected columns: row_id, url, company, title, status, applied_at, result"
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "options": {
+                        "leftValue": "",
+                        "caseSensitive": true,
+                        "typeValidation": "strict"
+                    },
+                    "combinator": "and",
+                    "conditions": [
+                        {
+                            "operator": {
+                                "type": "string",
+                                "operation": "exists"
+                            },
+                            "leftValue": "={{ $json.url }}",
+                            "rightValue": ""
+                        }
+                    ]
+                }
+            },
+            "id": "has-url",
+            "name": "Has URL?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 2,
+            "position": [
+                660,
+                400
+            ],
+            "notes": "Skip rows without a URL."
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "={{ $env.SMARTAPPLY_API_URL || 'http://localhost:8000' }}/agent/run",
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={\n  \"task\": \"Go to {{ $json.url }} and apply for this position. Fill all fields using the user profile. If you get stuck or need info, use ask_user. Notify progress with notify_user.\",\n  \"timeout\": 300\n}",
+                "options": {
+                    "response": {
+                        "response": {
+                            "responseFormat": "json"
+                        }
+                    },
+                    "timeout": 360000
+                }
+            },
+            "id": "apply-via-agent",
+            "name": "Apply via SmartApply Agent",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [
+                900,
+                300
+            ],
+            "notes": "Calls SmartApply /agent/run endpoint.\nAgent uses Telegram for human-in-the-loop when stuck.\nTimeout: 6 minutes per application."
+        },
+        {
+            "parameters": {
+                "operation": "update",
+                "documentId": {
+                    "__rl": true,
+                    "value": "YOUR_SPREADSHEET_ID",
+                    "mode": "id"
+                },
+                "sheetName": {
+                    "__rl": true,
+                    "value": "Applications",
+                    "mode": "list",
+                    "cachedResultName": "Applications"
+                },
+                "columns": {
+                    "mappingMode": "defineBelow",
+                    "value": {
+                        "status": "={{ $json.success ? 'APPLIED' : 'FAILED' }}",
+                        "applied_at": "={{ new Date().toISOString() }}",
+                        "result": "={{ $json.result || $json.error || 'Unknown' }}"
+                    },
+                    "matchingColumns": [
+                        "row_id"
+                    ]
+                },
+                "options": {}
+            },
+            "id": "update-sheet-status",
+            "name": "Update Sheet Status",
+            "type": "n8n-nodes-base.googleSheets",
+            "typeVersion": 4.5,
+            "position": [
+                1140,
+                300
+            ],
+            "credentials": {
+                "googleSheetsOAuth2Api": {
+                    "id": "YOUR_CREDENTIALS_ID",
+                    "name": "Google Sheets Account"
+                }
+            },
+            "notes": "Updates the row with APPLIED/FAILED status and timestamp."
+        },
+        {
+            "parameters": {
+                "jsCode": "const results = $items('Update Sheet Status');\nconst applied = results.filter(r => r.json.status === 'APPLIED').length;\nconst failed = results.filter(r => r.json.status === 'FAILED').length;\nconst total = results.length;\n\nreturn [{\n  json: {\n    summary: `Batch complete: ${applied}/${total} applied, ${failed} failed`,\n    applied,\n    failed,\n    total,\n    timestamp: new Date().toISOString()\n  }\n}];"
+            },
+            "id": "batch-summary",
+            "name": "Batch Summary",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [
+                1380,
+                300
+            ],
+            "notes": "Generates a summary of the batch run for logging/notification."
+        }
+    ],
+    "connections": {
+        "Schedule Trigger": {
+            "main": [
+                [
+                    {
+                        "node": "Read Pending Jobs",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Webhook Trigger": {
+            "main": [
+                [
+                    {
+                        "node": "Read Pending Jobs",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Read Pending Jobs": {
+            "main": [
+                [
+                    {
+                        "node": "Has URL?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Has URL?": {
+            "main": [
+                [
+                    {
+                        "node": "Apply via SmartApply Agent",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                []
+            ]
+        },
+        "Apply via SmartApply Agent": {
+            "main": [
+                [
+                    {
+                        "node": "Update Sheet Status",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Update Sheet Status": {
+            "main": [
+                [
+                    {
+                        "node": "Batch Summary",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    },
+    "settings": {
+        "executionOrder": "v1"
+    },
+    "meta": {
+        "templateCredsSetupCompleted": true
+    },
+    "pinData": {},
+    "tags": [
+        {
+            "name": "smart-apply"
+        },
+        {
+            "name": "batch"
+        }
+    ]
+}

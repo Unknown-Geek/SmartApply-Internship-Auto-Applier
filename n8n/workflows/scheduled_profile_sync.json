@@ -1,0 +1,166 @@
+{
+    "name": "SmartApply - Scheduled Profile Sync",
+    "nodes": [
+        {
+            "parameters": {
+                "rule": {
+                    "interval": [
+                        {
+                            "field": "hours",
+                            "hoursInterval": 6
+                        }
+                    ]
+                }
+            },
+            "id": "schedule-trigger",
+            "name": "Every 6 Hours",
+            "type": "n8n-nodes-base.scheduleTrigger",
+            "typeVersion": 1.2,
+            "position": [
+                200,
+                300
+            ],
+            "notes": "Syncs profile from Google Sheets every 6 hours.\nAdjust interval as needed."
+        },
+        {
+            "parameters": {
+                "command": "cd /home/ubuntu/SmartApply-Internship-Auto-Applier && python3 sync_profile.py 2>&1"
+            },
+            "id": "run-sync",
+            "name": "Run Profile Sync",
+            "type": "n8n-nodes-base.executeCommand",
+            "typeVersion": 1,
+            "position": [
+                440,
+                300
+            ],
+            "notes": "Runs sync_profile.py which fetches profile data from Google Sheets\nand stores it in the SmartApply SQLite database.\nAlternative: Use SSH node if n8n runs on a different machine."
+        },
+        {
+            "parameters": {
+                "conditions": {
+                    "options": {
+                        "leftValue": "",
+                        "caseSensitive": true,
+                        "typeValidation": "strict"
+                    },
+                    "combinator": "and",
+                    "conditions": [
+                        {
+                            "operator": {
+                                "type": "number",
+                                "operation": "equals"
+                            },
+                            "leftValue": "={{ $json.exitCode }}",
+                            "rightValue": 0
+                        }
+                    ]
+                }
+            },
+            "id": "check-success",
+            "name": "Sync OK?",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 2,
+            "position": [
+                660,
+                300
+            ],
+            "notes": "Check if sync_profile.py exited with code 0."
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={\n  \"chat_id\": \"{{ $env.TELEGRAM_CHAT_ID }}\",\n  \"text\": \"✅ Profile synced successfully from Google Sheets.\\n\\n{{ $('Run Profile Sync').item.json.stdout.slice(-200) }}\",\n  \"parse_mode\": \"Markdown\"\n}",
+                "options": {}
+            },
+            "id": "notify-success",
+            "name": "Notify Success",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [
+                900,
+                200
+            ],
+            "notes": "Sends a Telegram notification on success.\nSet TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in n8n env vars."
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={\n  \"chat_id\": \"{{ $env.TELEGRAM_CHAT_ID }}\",\n  \"text\": \"❌ Profile sync FAILED!\\n\\nError:\\n```\\n{{ $('Run Profile Sync').item.json.stderr.slice(-300) }}\\n```\",\n  \"parse_mode\": \"Markdown\"\n}",
+                "options": {}
+            },
+            "id": "notify-failure",
+            "name": "Notify Failure",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [
+                900,
+                420
+            ],
+            "notes": "Sends Telegram alert if sync fails."
+        }
+    ],
+    "connections": {
+        "Every 6 Hours": {
+            "main": [
+                [
+                    {
+                        "node": "Run Profile Sync",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Run Profile Sync": {
+            "main": [
+                [
+                    {
+                        "node": "Sync OK?",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Sync OK?": {
+            "main": [
+                [
+                    {
+                        "node": "Notify Success",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Notify Failure",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    },
+    "settings": {
+        "executionOrder": "v1"
+    },
+    "meta": {
+        "templateCredsSetupCompleted": true
+    },
+    "pinData": {},
+    "tags": [
+        {
+            "name": "smart-apply"
+        },
+        {
+            "name": "profile-sync"
+        }
+    ]
+}
