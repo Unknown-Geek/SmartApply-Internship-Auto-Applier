@@ -35,14 +35,7 @@ Webhook → Prepare Row → Add to Queue Sheet → Respond OK
 **Webhook:** `POST /webhook/smartapply-queue` with `{ "url": "https://...", "source": "Telegram Bot" }`
 **Sheet columns:** `url, status, applied_at, result`
 
-### 5. Notification Router (`notification_router.json`)
-Receives webhook notifications, routes by type to Slack + Email.
-```
-Webhook → Route by Type (error/success/info) → Slack + Email
-```
-**Webhook:** `POST /webhook/smartapply-notify` with `{ "type": "error", "message": "..." }`
-
-### 6. Application Logger (`application_logger.json`)
+### 5. Application Logger (`application_logger.json`)
 Logs application results to a Google Sheet tracking spreadsheet.
 ```
 Webhook → Normalize Data → Append to Sheet → Telegram Summary (if success)
