@@ -322,6 +322,8 @@ def remember(category: str, key: str, value: str,
              confidence: float = 1.0, source: str = None,
              db_path: str = DB_PATH) -> None:
     """Store a fact in agent memory (upsert)."""
+    if value is None:
+        value = ""
     conn = get_connection(db_path)
     try:
         conn.execute(
@@ -330,7 +332,7 @@ def remember(category: str, key: str, value: str,
                ON CONFLICT(category, key) DO UPDATE SET
                    value=excluded.value, confidence=excluded.confidence,
                    source=excluded.source, updated_at=excluded.updated_at""",
-            (category, key, value, confidence, source),
+            (category, key, str(value), confidence, source),
         )
         conn.commit()
     finally:
@@ -357,19 +359,23 @@ def recall(category: str = None, key: str = None, db_path: str = DB_PATH) -> lis
 
 
 def recall_as_context(categories: list[str] = None, db_path: str = DB_PATH) -> str:
-    """Format agent memory as context text for prompts."""
+    """Format agent memory as context text for prompts.
+    Excludes sensitive categories (credentials) from output."""
     conn = get_connection(db_path)
     try:
         if categories:
             placeholders = ",".join("?" * len(categories))
             rows = conn.execute(
                 f"SELECT category, key, value FROM memory WHERE category IN ({placeholders}) "
+                "AND category != 'credentials' "
                 "ORDER BY category, key",
                 categories,
             ).fetchall()
         else:
             rows = conn.execute(
-                "SELECT category, key, value FROM memory ORDER BY category, key"
+                "SELECT category, key, value FROM memory "
+                "WHERE category != 'credentials' "
+                "ORDER BY category, key"
             ).fetchall()
 
         if not rows:
@@ -383,6 +389,29 @@ def recall_as_context(categories: list[str] = None, db_path: str = DB_PATH) -> s
                 lines.append(f"\n## {current_cat}")
             lines.append(f"- {r['key']}: {r['value']}")
         return "\n".join(lines)
+    finally:
+        conn.close()
+
+
+# =============================================================================
+# Credential Cleanup
+# =============================================================================
+
+def forget_credentials(company: str = None, db_path: str = DB_PATH) -> int:
+    """Delete stored credentials from memory. Returns number of rows deleted.
+    If company is given, only delete that company's credentials.
+    If company is None, delete ALL credential entries."""
+    conn = get_connection(db_path)
+    try:
+        if company:
+            cur = conn.execute(
+                "DELETE FROM memory WHERE category='credentials' AND key LIKE ?",
+                (f"{company}%",),
+            )
+        else:
+            cur = conn.execute("DELETE FROM memory WHERE category='credentials'")
+        conn.commit()
+        return cur.rowcount
     finally:
         conn.close()
 

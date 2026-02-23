@@ -156,6 +156,61 @@ Return a JSON object:
 Return ONLY the JSON object.
 """
 
+LOGIN_PROMPT = """You are SmartApply, an autonomous internship application agent.
+
+TASK: Log in or create an account on a job portal so we can submit an application.
+
+{memory_context}
+
+USER PROFILE:
+{profile_context}
+
+TARGET URL: {url}
+COMPANY/PORTAL: {company}
+
+USER-PROVIDED CREDENTIALS:
+{credentials}
+
+INSTRUCTIONS — follow this priority order:
+
+1. **SSO (preferred):** Look for "Sign in with Google", "Sign in with LinkedIn",
+   "Continue with Google/LinkedIn" buttons. If found, click it and complete the
+   OAuth flow. The user's Google email is in the profile. If the SSO flow asks
+   for a password or verification the agent cannot complete, use ask_user to
+   request it from the user.
+
+2. **Existing account login:** If the user provided a password, try logging in
+   with their email + password.
+
+3. **Create new account:** If no SSO and no existing credentials, look for
+   "Sign Up", "Create Account", or "Register" links. Fill the registration
+   form using the user's profile data. If a password is needed, use ask_user
+   to ask the user to provide one. Complete any email-verification step by
+   asking the user for the verification code via ask_user.
+
+4. After successful login/signup, navigate back to {url} if not already there.
+
+IMPORTANT:
+- Always prefer Google/LinkedIn SSO over creating a new account
+- Use notify_user to report progress ("Found Google SSO button", "Creating account...", etc.)
+- Use ask_user when you need the user to provide a password, OTP, or verification code
+- If CAPTCHA blocks you, report it via ask_user and wait for guidance
+- Take a screenshot after login to confirm success
+
+Return a JSON object:
+```json
+{{
+  "status": "logged_in|created_account|failed",
+  "method": "google_sso|linkedin_sso|existing_login|new_account",
+  "steps_taken": ["Found Sign in with Google", "Clicked SSO button", ...],
+  "issues": [],
+  "screenshot_taken": true
+}}
+```
+
+Return ONLY the JSON object.
+"""
+
 RESUME_CONTEXT_PROMPT = """You are SmartApply, an autonomous internship application agent.
 
 TASK: Learn and remember key facts from the user's resume/profile for future applications.
@@ -405,7 +460,93 @@ class SmartApplyOrchestrator:
         return analysis
 
     # -----------------------------------------------------------------
-    # 4) Apply to Job
+    # 4a) Handle Login / Account Creation
+    # -----------------------------------------------------------------
+
+    async def handle_login(self, job_id: int, url: str, company: str) -> dict:
+        """
+        Handle login or account creation for a job portal.
+
+        Priority: Google SSO > LinkedIn SSO > existing account > new account.
+        Uses human_loop to ask user for credentials when needed.
+        """
+        profile = get_all_profile()
+        memory_ctx = recall_as_context()
+
+        # Check if we have stored credentials for this portal
+        stored_password = None
+        from app.db.database import recall, forget_credentials
+        creds = recall(category="credentials", key=f"{company}_password")
+        if creds:
+            stored_password = creds[0].get("value") if creds else None
+
+        # Ask user how they want to proceed
+        credentials_info = ""
+        if self.human_loop:
+            await self.human_loop.notify(
+                f"🔐 This job portal ({company}) requires login.\n\n"
+                f"I'll try in this order:\n"
+                f"1. Sign in with Google/LinkedIn (if available)\n"
+                f"2. Log in with existing account\n"
+                f"3. Create a new account\n\n"
+                f"I may ask you for a password or verification code."
+            )
+
+            if not stored_password:
+                answer = await self.human_loop.ask(
+                    f"Do you have an existing account on this portal ({company})?\n\n"
+                    f"Reply with:\n"
+                    f"• Your password if you have an account\n"
+                    f"• 'google' to use Google Sign-In\n"
+                    f"• 'linkedin' to use LinkedIn Sign-In\n"
+                    f"• 'new' to create a new account"
+                )
+                answer_lower = answer.strip().lower()
+                if answer_lower == "google":
+                    credentials_info = "User prefers Google SSO. Use Sign in with Google."
+                elif answer_lower == "linkedin":
+                    credentials_info = "User prefers LinkedIn SSO. Use Sign in with LinkedIn."
+                elif answer_lower == "new":
+                    credentials_info = "User wants to create a new account. Look for Sign Up / Register."
+                elif "did not reply" in answer_lower or "could not reach" in answer_lower:
+                    credentials_info = "No credentials provided. Try Google/LinkedIn SSO first, then create new account."
+                else:
+                    credentials_info = f"User provided password: {answer.strip()}\nEmail: {profile.get('Personal Email', profile.get('email', ''))}"
+                    # Keep password only in-memory for this session (do NOT persist to DB)
+            else:
+                credentials_info = f"Stored password: {stored_password}\nEmail: {profile.get('Personal Email', profile.get('email', ''))}"
+
+        prompt = LOGIN_PROMPT.format(
+            url=url,
+            company=company,
+            credentials=credentials_info or "None provided. Try Google/LinkedIn SSO first, then create new account.",
+            profile_context=json.dumps(profile, indent=2) if profile else "No profile data.",
+            memory_context=f"KNOWN FACTS:\n{memory_ctx}" if memory_ctx else "",
+        )
+
+        agent = self._create_agent(max_turns=30)
+        result = await agent.run(prompt, task_type="login")
+
+        if not result.success:
+            return {"status": "failed", "error": result.error}
+
+        login_result = _safe_parse_json(result.text)
+        if not login_result:
+            return {"status": "failed", "error": "Could not parse login result", "raw": result.text}
+
+        # Remember the login method for this portal (non-sensitive)
+        if login_result.get("status") in ("logged_in", "created_account"):
+            remember(
+                "login_methods",
+                f"{company}_method",
+                login_result.get("method", "unknown"),
+                source=f"job_{job_id}",
+            )
+
+        return login_result
+
+    # -----------------------------------------------------------------
+    # 4b) Apply to Job
     # -----------------------------------------------------------------
 
     async def apply_to_job(self, job_id: int, form_analysis: dict = None) -> dict:
@@ -472,9 +613,11 @@ class SmartApplyOrchestrator:
             update_application(app_id, "partial", steps=steps)
             update_job_status(job_id, "failed")
         else:
+            issues = app_result.get("issues", [])
+            error_str = json.dumps(issues) if isinstance(issues, (list, dict)) else str(issues)
             update_application(
                 app_id, "failed", steps=steps,
-                error=app_result.get("issues", []),
+                error=error_str,
             )
             update_job_status(job_id, "failed")
 
@@ -621,11 +764,60 @@ Use notify_user to send progress updates.
                 f"• Type: {app_type}\n"
                 f"• Fields: {fields_count}\n"
                 f"• Resume required: {analysis.get('requires_resume', 'unknown')}\n"
-                f"\n⚙️ Starting to fill the application..."
             )
+
+        # Handle login if required
+        app_type = analysis.get("application_type", "")
+        requires_login = analysis.get("requires_login", False)
+
+        if app_type == "requires_login" or requires_login:
+            if self.human_loop:
+                await self.human_loop.notify("🔐 Login required — handling authentication...")
+
+            login_result = await self.handle_login(
+                job_id=job_id,
+                url=url,
+                company=analysis.get("ats_name", "(Unknown Portal)"),
+            )
+
+            login_status = login_result.get("status", "failed")
+            if login_status in ("logged_in", "created_account"):
+                method = login_result.get("method", "unknown")
+                if self.human_loop:
+                    await self.human_loop.notify(
+                        f"✅ Logged in via {method}\n\n⚙️ Now filling the application..."
+                    )
+                # Re-analyze now that we're logged in
+                analysis = await self.analyze_job(job_id)
+                if "error" in analysis:
+                    if self.human_loop:
+                        await self.human_loop.notify(
+                            f"❌ Could not analyze page after login: {analysis['error']}"
+                        )
+                    return {"error": analysis["error"]}
+            else:
+                error_msg = login_result.get("error", "Login failed")
+                if self.human_loop:
+                    await self.human_loop.notify(f"❌ Login failed: {error_msg}")
+                return {"error": f"Login failed: {error_msg}", "login_result": login_result}
+        else:
+            if self.human_loop:
+                await self.human_loop.notify("⚙️ Starting to fill the application...")
 
         # Apply
         result = await self.apply_to_job(job_id, form_analysis=analysis)
+
+        # --- Credential cleanup: wipe any stored credentials after application ---
+        try:
+            from app.db.database import forget_credentials
+            deleted = forget_credentials()  # delete ALL credential entries
+            if deleted > 0:
+                import logging
+                logging.getLogger("smartapply").info(
+                    "Cleaned up %d credential entries from memory after application", deleted
+                )
+        except Exception:
+            pass  # non-critical
 
         # Notify result
         if self.human_loop:

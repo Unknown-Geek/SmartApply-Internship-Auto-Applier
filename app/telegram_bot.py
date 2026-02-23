@@ -75,11 +75,18 @@ class SmartApplyBot:
     async def _send_notification(self, message: str) -> None:
         """Send a notification message to the authorized user."""
         if self.app and self.app.bot:
-            await self.app.bot.send_message(
-                chat_id=self.authorized_chat_id,
-                text=message,
-                parse_mode="Markdown",
-            )
+            try:
+                await self.app.bot.send_message(
+                    chat_id=self.authorized_chat_id,
+                    text=message,
+                    parse_mode="Markdown",
+                )
+            except Exception:
+                # Fallback to plain text if Markdown parsing fails
+                await self.app.bot.send_message(
+                    chat_id=self.authorized_chat_id,
+                    text=message,
+                )
 
     async def _send_question(self, question: str) -> None:
         """Send a question to the authorized user (agent is waiting for reply)."""
