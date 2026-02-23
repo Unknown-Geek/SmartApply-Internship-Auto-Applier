@@ -152,14 +152,22 @@ class SmartApplyBot:
             )
             return
 
-        lines = ["*Your Profile:*\n"]
+        lines = ["<b>Your Profile:</b>\n"]
         for key, value in profile.items():
             val_str = str(value)
+            # Escape HTML characters first
+            val_str = val_str.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
             if len(val_str) > 100:
                 val_str = val_str[:100] + "..."
-            lines.append(f"• *{key}:* {val_str}")
+            lines.append(f"• <b>{key}:</b> {val_str}")
 
-        await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+        # Send in chunks if it gets too long for Telegram (max 4096)
+        full_message = "\n".join(lines)
+        if len(full_message) > 4000:
+            for i in range(0, len(full_message), 4000):
+                await update.message.reply_text(full_message[i:i+4000], parse_mode="HTML")
+        else:
+            await update.message.reply_text(full_message, parse_mode="HTML")
 
     async def _cmd_cancel(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle /cancel command — cancel the current agent task."""
