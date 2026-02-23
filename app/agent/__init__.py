@@ -1,15 +1,20 @@
 # =============================================================================
-# SmartApply Web Agent - Agent Module
+# SmartApply — Agent Module
 # =============================================================================
-# This module contains the web automation agent components.
+# Cerebras-powered autonomous agent for internship applications.
 # =============================================================================
 
 """
 Agent Module
 
-Contains browser-use web agent setup and Gemini LLM integration.
+Contains the Cerebras agent, browser manager, and orchestration logic.
 """
 
-from app.agent.web_agent import WebAgent, create_web_agent
+from app.agent.cerebras_agent import CerebrasAgent, AgentResult
+from app.agent.orchestrator import SmartApplyOrchestrator
 
-__all__ = ["WebAgent", "create_web_agent"]
+__all__ = [
+    "CerebrasAgent",
+    "AgentResult",
+    "SmartApplyOrchestrator",
+]
