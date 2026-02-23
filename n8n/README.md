@@ -20,11 +20,12 @@ Schedule (hourly) → Read Pending Jobs → Apply via Agent → Update Sheet Sta
 ```
 **Sheet columns:** `row_id, url, company, title, status, applied_at, result`
 
-### 3. Scheduled Profile Sync (`scheduled_profile_sync.json`)
-Auto-syncs profile from Google Sheets every 6 hours.
+### 3. Profile Sync (Trigger-based) (`scheduled_profile_sync.json`)
+Auto-syncs profile from Google Sheets whenever a row is updated.
 ```
-Every 6 Hours → Run sync_profile.py → Notify Success/Failure via Telegram
+On Profile Update → Read Full Profile → Build JSON → Send to SmartApply API → Notify
 ```
+**Endpoint:** `POST /profile/ingest`
 
 ### 4. Queue Application (`queue_application.json`)
 Webook endpoint to queue forwarded Telegram links for batch processing.

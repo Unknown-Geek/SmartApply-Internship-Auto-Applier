@@ -1,71 +1,110 @@
 {
-    "name": "SmartApply - Scheduled Profile Sync",
+    "name": "SmartApply - Profile Sync (Trigger)",
     "nodes": [
         {
             "parameters": {
-                "rule": {
-                    "interval": [
+                "pollTimes": {
+                    "item": [
                         {
-                            "field": "hours",
-                            "hoursInterval": 6
+                            "mode": "everyX",
+                            "value": 15,
+                            "unit": "minutes"
                         }
                     ]
-                }
+                },
+                "documentId": {
+                    "__rl": true,
+                    "value": "YOUR_SPREADSHEET_ID",
+                    "mode": "id"
+                },
+                "sheetName": {
+                    "__rl": true,
+                    "value": "profileData",
+                    "mode": "list",
+                    "cachedResultName": "profileData"
+                },
+                "event": "rowUpdated",
+                "options": {}
             },
-            "id": "schedule-trigger",
-            "name": "Every 6 Hours",
-            "type": "n8n-nodes-base.scheduleTrigger",
-            "typeVersion": 1.2,
+            "id": "sheet-trigger",
+            "name": "On Profile Update",
+            "type": "n8n-nodes-base.googleSheetsTrigger",
+            "typeVersion": 1,
             "position": [
                 200,
                 300
             ],
-            "notes": "Syncs profile from Google Sheets every 6 hours.\nAdjust interval as needed."
+            "credentials": {
+                "googleSheetsTriggerOAuth2Api": {
+                    "id": "YOUR_CREDENTIALS_ID",
+                    "name": "Google Sheets Trigger Account"
+                }
+            },
+            "notes": "Triggers when rows are updated in the profileData sheet."
         },
         {
             "parameters": {
-                "command": "cd /home/ubuntu/SmartApply-Internship-Auto-Applier && python3 sync_profile.py 2>&1"
+                "documentId": {
+                    "__rl": true,
+                    "value": "YOUR_SPREADSHEET_ID",
+                    "mode": "id"
+                },
+                "sheetName": {
+                    "__rl": true,
+                    "value": "profileData",
+                    "mode": "list",
+                    "cachedResultName": "profileData"
+                },
+                "options": {}
             },
-            "id": "run-sync",
-            "name": "Run Profile Sync",
-            "type": "n8n-nodes-base.executeCommand",
-            "typeVersion": 1,
+            "id": "read-all-profile",
+            "name": "Read Full Profile",
+            "type": "n8n-nodes-base.googleSheets",
+            "typeVersion": 4.5,
             "position": [
                 440,
                 300
             ],
-            "notes": "Runs sync_profile.py which fetches profile data from Google Sheets\nand stores it in the SmartApply SQLite database.\nAlternative: Use SSH node if n8n runs on a different machine."
+            "credentials": {
+                "googleSheetsOAuth2Api": {
+                    "id": "YOUR_CREDENTIALS_ID",
+                    "name": "Google Sheets Account"
+                }
+            },
+            "notes": "Reads all rows from the profileData sheet to build the full profile JSON."
         },
         {
             "parameters": {
-                "conditions": {
-                    "options": {
-                        "leftValue": "",
-                        "caseSensitive": true,
-                        "typeValidation": "strict"
-                    },
-                    "combinator": "and",
-                    "conditions": [
-                        {
-                            "operator": {
-                                "type": "number",
-                                "operation": "equals"
-                            },
-                            "leftValue": "={{ $json.exitCode }}",
-                            "rightValue": 0
-                        }
-                    ]
-                }
+                "jsCode": "const profile = {};\nfor (const item of $input.all()) {\n    if (item.json.Key && item.json.Value) {\n        profile[item.json.Key] = item.json.Value;\n    }\n}\nreturn [{ json: { profile: profile } }];"
             },
-            "id": "check-success",
-            "name": "Sync OK?",
-            "type": "n8n-nodes-base.if",
+            "id": "build-json",
+            "name": "Build Profile JSON",
+            "type": "n8n-nodes-base.code",
             "typeVersion": 2,
             "position": [
                 660,
                 300
             ],
-            "notes": "Check if sync_profile.py exited with code 0."
+            "notes": "Converts rows into a single key-value JSON object."
+        },
+        {
+            "parameters": {
+                "method": "POST",
+                "url": "={{ $env.SMARTAPPLY_API_URL || 'http://localhost:8000' }}/profile/ingest",
+                "sendBody": true,
+                "specifyBody": "json",
+                "jsonBody": "={{ JSON.stringify($json.profile) }}",
+                "options": {}
+            },
+            "id": "send-to-api",
+            "name": "Send to SmartApply API",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.2,
+            "position": [
+                880,
+                300
+            ],
+            "notes": "POSTs the profile JSON directly to the SmartApply backend."
         },
         {
             "parameters": {
@@ -73,7 +112,7 @@
                 "url": "https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
                 "sendBody": true,
                 "specifyBody": "json",
-                "jsonBody": "={\n  \"chat_id\": \"{{ $env.TELEGRAM_CHAT_ID }}\",\n  \"text\": \"✅ Profile synced successfully from Google Sheets.\\n\\n{{ $('Run Profile Sync').item.json.stdout.slice(-200) }}\",\n  \"parse_mode\": \"Markdown\"\n}",
+                "jsonBody": "={\n  \"chat_id\": \"{{ $env.TELEGRAM_CHAT_ID }}\",\n  \"text\": \"✅ *Profile Auto-Synced!*\\nDetected changes in your Google Sheet and pushed them to SmartApply.\\n\\nUpdated fields: {{ Object.keys($('Build Profile JSON').item.json.profile).length }}\",\n  \"parse_mode\": \"Markdown\"\n}",
                 "options": {}
             },
             "id": "notify-success",
@@ -81,10 +120,9 @@
             "type": "n8n-nodes-base.httpRequest",
             "typeVersion": 4.2,
             "position": [
-                900,
+                1120,
                 200
-            ],
-            "notes": "Sends a Telegram notification on success.\nSet TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in n8n env vars."
+            ]
         },
         {
             "parameters": {
@@ -92,7 +130,7 @@
                 "url": "https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
                 "sendBody": true,
                 "specifyBody": "json",
-                "jsonBody": "={\n  \"chat_id\": \"{{ $env.TELEGRAM_CHAT_ID }}\",\n  \"text\": \"❌ Profile sync FAILED!\\n\\nError:\\n```\\n{{ $('Run Profile Sync').item.json.stderr.slice(-300) }}\\n```\",\n  \"parse_mode\": \"Markdown\"\n}",
+                "jsonBody": "={\n  \"chat_id\": \"{{ $env.TELEGRAM_CHAT_ID }}\",\n  \"text\": \"❌ Profile sync FAILED!\\n\\nCould not send data to SmartApply API.\",\n  \"parse_mode\": \"Markdown\"\n}",
                 "options": {}
             },
             "id": "notify-failure",
@@ -100,36 +138,46 @@
             "type": "n8n-nodes-base.httpRequest",
             "typeVersion": 4.2,
             "position": [
-                900,
+                1120,
                 420
-            ],
-            "notes": "Sends Telegram alert if sync fails."
+            ]
         }
     ],
     "connections": {
-        "Every 6 Hours": {
+        "On Profile Update": {
             "main": [
                 [
                     {
-                        "node": "Run Profile Sync",
+                        "node": "Read Full Profile",
                         "type": "main",
                         "index": 0
                     }
                 ]
             ]
         },
-        "Run Profile Sync": {
+        "Read Full Profile": {
             "main": [
                 [
                     {
-                        "node": "Sync OK?",
+                        "node": "Build Profile JSON",
                         "type": "main",
                         "index": 0
                     }
                 ]
             ]
         },
-        "Sync OK?": {
+        "Build Profile JSON": {
+            "main": [
+                [
+                    {
+                        "node": "Send to SmartApply API",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Send to SmartApply API": {
             "main": [
                 [
                     {
