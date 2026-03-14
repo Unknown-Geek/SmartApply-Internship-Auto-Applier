@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Optional: push each new commit automatically.
+# Requires valid upstream and auth.
+
+branch="$(git rev-parse --abbrev-ref HEAD)"
+
+git push origin "$branch"

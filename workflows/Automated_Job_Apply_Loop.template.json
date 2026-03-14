@@ -1,0 +1,279 @@
+{
+  "name": "Automated Job Apply Loop",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 1
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        240,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": "={{$env.INTERNSHIP_SHEET_ID}}",
+        "sheetName": "Internship Leads",
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "Status",
+              "lookupValue": "Pending"
+            }
+          ]
+        }
+      },
+      "id": "leads-sheet",
+      "name": "Get Pending Leads",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        500,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "documentId": "={{$env.IDENTITY_SHEET_ID}}",
+        "sheetName": "Identity"
+      },
+      "id": "identity-sheet",
+      "name": "Get Identity Data",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        500,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine"
+      },
+      "id": "merge-data",
+      "name": "Merge Lead + Identity",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        760,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are an autonomous job application agent.\n1. Use Scrapling to read the job URL: {{$json.job_url}}.\n2. Decide whether the role is DEV or DESIGN.\n3. Use PinchTab to navigate, fill forms with identity data, upload the matching resume link, and submit if confidence is high.\n4. Return strict JSON with keys: status, company, role, notes.",
+        "options": {
+          "systemMessage": "Always prefer deterministic, verifiable actions. Never fabricate submit confirmations; verify form result before returning success."
+        }
+      },
+      "id": "ai-agent",
+      "name": "AI Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.8,
+      "position": [
+        1040,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "model": "qwen2.5-coder:7b",
+        "options": {}
+      },
+      "id": "ollama-model",
+      "name": "Ollama Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        1040,
+        180
+      ],
+      "credentials": {
+        "ollamaApi": {
+          "id": "replace-with-credential-id",
+          "name": "Ollama Local"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "name": "Scrapling",
+        "serverTransport": "stdio"
+      },
+      "id": "mcp-scrapling",
+      "name": "MCP Tool - Scrapling",
+      "type": "@n8n/n8n-nodes-langchain.toolMcp",
+      "typeVersion": 1,
+      "position": [
+        1260,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "name": "PinchTab",
+        "serverTransport": "stdio"
+      },
+      "id": "mcp-pinchtab",
+      "name": "MCP Tool - PinchTab",
+      "type": "@n8n/n8n-nodes-langchain.toolMcp",
+      "typeVersion": 1,
+      "position": [
+        1260,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{$env.TELEGRAM_CHAT_ID}}",
+        "text": "=✅ Applied to {{$json.company}} for {{$json.role}}. Status: {{$json.status}}"
+      },
+      "id": "telegram-notify",
+      "name": "Telegram Success Notify",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1520,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": "={{$env.INTERNSHIP_SHEET_ID}}",
+        "sheetName": "Internship Leads",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Status": "Applied"
+          }
+        }
+      },
+      "id": "mark-applied",
+      "name": "Update Lead Status",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1520,
+        520
+      ]
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get Pending Leads",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Identity Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Pending Leads": {
+      "main": [
+        [
+          {
+            "node": "Merge Lead + Identity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Identity Data": {
+      "main": [
+        [
+          {
+            "node": "Merge Lead + Identity",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Lead + Identity": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "MCP Tool - Scrapling": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "MCP Tool - PinchTab": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Telegram Success Notify",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Update Lead Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
