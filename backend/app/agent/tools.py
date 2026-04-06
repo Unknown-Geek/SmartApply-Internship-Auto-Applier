@@ -11,7 +11,7 @@ from smolagents import tool
 
 logger = logging.getLogger(__name__)
 
-PINCHTAB_DAEMON_URL = os.getenv("PINCHTAB_DAEMON_URL", "http://localhost:8765")
+PINCHTAB_API_URL = os.getenv("PINCHTAB_DAEMON_URL", "http://localhost:9867")
 CONTEXT_MODE_URL = os.getenv("CONTEXT_MODE_URL", "http://context-mode:3100")
 RESUME_PDF_PATH = os.getenv("RESUME_PDF_PATH", "/app/data/identity/resume.pdf")
 
@@ -67,7 +67,7 @@ def navigate(url: str) -> str:
         Confirmation message with page title.
     """
     # Try PinchTab first
-    result = _run_pinchtab(["nav", url])
+    result = _pinchtab_call("navigate", {"url": url})
     if result["success"]:
         return f"[OK] Navigated to: {url}"
     # Fallback: log and return
@@ -87,7 +87,7 @@ def get_ui_elements() -> str:
     Returns:
         A compact listing of interactive element references and their labels.
     """
-    result = _run_pinchtab(["snap", "-i", "-c"])
+    result = _pinchtab_call("snapshot", {"interactive": True, "compact": True})
     if result["success"]:
         output = result["output"]
         # If output is too long, pass through context-mode
@@ -126,15 +126,14 @@ def act_on_ui(action: str, ref: str, text: str = "") -> str:
         Result of the action.
     """
     if action == "click":
-        result = _run_pinchtab(["click", ref])
+        result = _pinchtab_call("click", {"ref": ref})
     elif action == "fill":
-        result = _run_pinchtab(["fill", ref, text])
+        result = _pinchtab_call("fill", {"ref": ref, "text": text})
     elif action == "select":
-        result = _run_pinchtab(["select", ref, text])
+        result = _pinchtab_call("select", {"ref": ref, "value": text})
     elif action == "upload":
-        # PinchTab file attachment API — bypasses OS file picker
         file_path = text if text else RESUME_PDF_PATH
-        result = _run_pinchtab(["attach", ref, file_path])
+        result = _pinchtab_call("attach", {"ref": ref, "path": file_path})
     else:
         return f"[ERROR] Unknown action: {action}. Use click/fill/select/upload."
 
@@ -177,7 +176,28 @@ def ctx_search(query: str) -> str:
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
-def _run_pinchtab(args: list) -> dict:
+def _pinchtab_call(path: str, payload: dict) -> dict:
+    """Call PinchTab's HTTP API. Falls back to CLI subprocess if API unreachable."""
+    try:
+        resp = httpx.post(
+            f"{PINCHTAB_API_URL}/{path.lstrip('/')}",
+            json=payload,
+            timeout=30,
+        )
+        data = resp.json()
+        return {
+            "success": resp.status_code < 400,
+            "output": data.get("result") or data.get("text") or "",
+            "error": data.get("error") if resp.status_code >= 400 else None,
+        }
+    except httpx.ConnectError:
+        # Fallback to CLI
+        return _run_pinchtab_cli(path.split("/")[-1:])
+    except Exception as e:
+        return {"success": False, "output": "", "error": str(e)}
+
+
+def _run_pinchtab_cli(args: list) -> dict:
     """Run a PinchTab CLI command and return structured result."""
     try:
         cmd = ["pinchtab"] + args

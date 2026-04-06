@@ -10,7 +10,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gnupg \
     ca-certificates \
     supervisor \
-    # Chromium for PinchTab (ARM64 compatible)
+    # Xvfb — virtual framebuffer for headless Chromium
+    xvfb \
+    # Chromium for PinchTab (ARM64 native in Debian bookworm)
     chromium \
     chromium-driver \
     # Scrapling / Playwright stealth deps
@@ -26,9 +28,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgbm1 \
     libxkbcommon0 \
     libasound2 \
+    libx11-xcb1 \
     # General utilities
     build-essential \
     git \
+    procps \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -40,20 +44,24 @@ RUN pip install --no-cache-dir -r requirements.txt
 # ─── Install Scrapling browser fingerprints ───────────────────────────────────
 RUN scrapling install 2>/dev/null || true
 
-# ─── Install PinchTab ─────────────────────────────────────────────────────────
-# Try to install PinchTab. Falls back gracefully if not available on aarch64.
+# ─── Install PinchTab (ARM64 linux supported natively) ────────────────────────
 RUN curl -fsSL https://pinchtab.com/install.sh | bash 2>/dev/null \
-    && ln -sf ~/.local/bin/pinchtab /usr/local/bin/pinchtab 2>/dev/null \
-    || echo "⚠️  PinchTab not available for this arch — using Scrapling-only mode"
+    && (cp ~/.local/bin/pinchtab /usr/local/bin/pinchtab 2>/dev/null || true) \
+    && pinchtab --version 2>/dev/null || echo "⚠️  PinchTab install skipped"
 
 # ─── Copy app source ─────────────────────────────────────────────────────────
 COPY app/ /app/app/
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
-# ─── Create data directory ────────────────────────────────────────────────────
-RUN mkdir -p /app/data/identity /app/data/sessions /app/.chrome_data
+# ─── Create data & log directories ───────────────────────────────────────────
+RUN mkdir -p /app/data/identity /app/data/sessions /app/.chrome_data \
+             /var/log/supervisor
 
-# ─── Entrypoint ──────────────────────────────────────────────────────────────
+# ─── Chrome/Chromium environment ─────────────────────────────────────────────
+ENV CHROME_BIN=/usr/bin/chromium
+ENV CHROMIUM_FLAGS="--no-sandbox --disable-dev-shm-usage --headless=new"
+ENV DISPLAY=:99
+
 EXPOSE 8000
 
-CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
+CMD ["/usr/bin/supervisord", "-n", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
