@@ -19,9 +19,12 @@ frontend/.vite/
 .env
 !.env.example
 
-# Data (user-specific)
+# Data — keep example files and gitkeeps; ignore real personal data
 data/identity/resume.pdf
 data/identity/identity.csv
+!data/identity/identity.example.csv
+!data/identity/.gitkeep
+!data/sessions/.gitkeep
 
 # Logs
 *.log

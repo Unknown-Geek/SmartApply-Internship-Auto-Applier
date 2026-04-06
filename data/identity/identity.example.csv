@@ -1,0 +1,14 @@
+field,value
+first_name,Shravan
+last_name,Pandala
+full_name,Shravan Pandala
+email,shravan.pandala@email.com
+phone,+1-555-0123
+linkedin,https://linkedin.com/in/shravanpandala
+github,https://github.com/shravanpandala
+location,San Francisco, CA
+work_authorization,US Citizen
+years_experience,5
+current_title,Software Engineer
+resume_pdf,/app/data/identity/resume.pdf
+cover_letter_tagline,Passionate engineer with 5 years building scalable systems.

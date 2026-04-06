@@ -1,0 +1,89 @@
+version: "3.9"
+# Development override — hot-reload backend/frontend, skip rebuild on code changes
+
+services:
+  ollama:
+    # Same as prod
+    image: ollama/ollama:latest
+    volumes:
+      - ollama_data:/root/.ollama
+      - ./ollama/entrypoint.sh:/entrypoint.sh
+    entrypoint: ["/bin/bash", "/entrypoint.sh"]
+    ports:
+      - "11434:11434"
+    environment:
+      - OLLAMA_NUM_PARALLEL=1
+      - OLLAMA_NUM_THREAD=4
+      - OLLAMA_HOST=0.0.0.0:11434
+    networks:
+      - smart-apply-net
+
+  context-mode:
+    build:
+      context: ./context-mode
+      dockerfile: Dockerfile
+    ports:
+      - "3100:3100"
+    volumes:
+      - context_data:/app/data
+      - ./context-mode/server.js:/app/server.js  # Live reload
+    networks:
+      - smart-apply-net
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    depends_on:
+      - ollama
+      - context-mode
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/app:/app/app  # Hot reload — code changes reflect instantly
+      - ./data:/app/data
+      - chrome_data:/app/.chrome_data
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+      - LLM_MODEL=${LLM_MODEL:-qwen2.5-coder:7b}
+      - LLM_CONTEXT_SIZE=${LLM_CONTEXT_SIZE:-8192}
+      - CONTEXT_MODE_URL=http://context-mode:3100
+      - IDENTITY_CSV_PATH=/app/data/identity/identity.csv
+      - RESUME_PDF_PATH=/app/data/identity/resume.pdf
+      - AGENT_MAX_STEPS=${AGENT_MAX_STEPS:-20}
+      - SECRET_KEY=dev-secret-not-for-production
+      - CHROME_NO_SANDBOX=true
+      - DISPLAY=:99
+    # Override CMD for dev: use --reload
+    command: >
+      /bin/bash -c "
+        supervisord -c /etc/supervisor/conf.d/supervisord.conf &
+        sleep 3 &&
+        uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --log-level debug
+      "
+    networks:
+      - smart-apply-net
+
+  frontend:
+    image: node:20-slim
+    working_dir: /app
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules  # Anonymous volume to avoid host override
+    ports:
+      - "3000:3000"
+    environment:
+      - VITE_API_URL=http://localhost:8000
+      - VITE_WS_URL=ws://localhost:8000
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 3000"
+    networks:
+      - smart-apply-net
+
+volumes:
+  ollama_data:
+  context_data:
+  chrome_data:
+
+networks:
+  smart-apply-net:
+    driver: bridge
