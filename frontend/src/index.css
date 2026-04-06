@@ -1,0 +1,53 @@
+/* ─── Reset & Base ────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg-900: #0a0b0d;
+  --bg-800: #111318;
+  --bg-700: #1a1d24;
+  --bg-600: #22262f;
+  --bg-500: #2c3140;
+  --border: rgba(255,255,255,0.06);
+  --border-accent: rgba(99,179,237,0.3);
+
+  --accent-blue: #63b3ed;
+  --accent-purple: #9f7aea;
+  --accent-green: #68d391;
+  --accent-yellow: #f6e05e;
+  --accent-red: #fc8181;
+  --accent-orange: #fbd38d;
+
+  --text-primary: #f0f4f8;
+  --text-secondary: #a0aec0;
+  --text-muted: #4a5568;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+
+  --font-sans: 'Inter', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+
+  --shadow-glow: 0 0 40px rgba(99,179,237,0.08);
+  --shadow-card: 0 4px 24px rgba(0,0,0,0.4);
+}
+
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: var(--font-sans);
+  background: var(--bg-900);
+  color: var(--text-primary);
+  min-height: 100vh;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ─── Scrollbar ──────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--bg-800); }
+::-webkit-scrollbar-thumb { background: var(--bg-500); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* ─── Selection ──────────────────────────────────────────────────────────── */
+::selection { background: rgba(99,179,237,0.25); }

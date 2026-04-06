@@ -1,0 +1,13 @@
+.health-bar { display: flex; align-items: center; gap: 10px; }
+.health-dot-wrap {
+  display: flex; align-items: center; gap: 5px;
+  font-size: 0.72rem; color: var(--text-muted);
+}
+.health-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+}
+.health-label { font-size: 0.72rem; }
+.health-dot-wrap.ok .health-dot { background: var(--accent-green); box-shadow: 0 0 6px var(--accent-green); }
+.health-dot-wrap.ok .health-label { color: var(--accent-green); }
+.health-dot-wrap.err .health-dot { background: var(--accent-red); }
+.health-dot-wrap.err .health-label { color: var(--accent-red); }

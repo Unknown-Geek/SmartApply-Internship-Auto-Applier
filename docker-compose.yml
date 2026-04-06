@@ -1,0 +1,111 @@
+version: "3.9"
+
+services:
+  # ─── 1. Ollama — Local LLM inference (qwen2.5-coder:7b) ─────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    container_name: smart-apply-ollama
+    volumes:
+      - ollama_data:/root/.ollama
+      - ./ollama/entrypoint.sh:/entrypoint.sh
+    entrypoint: ["/bin/bash", "/entrypoint.sh"]
+    ports:
+      - "11434:11434"
+    environment:
+      - OLLAMA_NUM_PARALLEL=1        # Prevent OOM on 4-core ARM VM
+      - OLLAMA_NUM_THREAD=4          # Use all Neoverse-N1 cores
+      - OLLAMA_HOST=0.0.0.0:11434
+    networks:
+      - smart-apply-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 120s  # Allow time for model pull on first boot
+
+  # ─── 2. context-mode — MCP Context Indexer (SQLite FTS5) ─────────────────────
+  context-mode:
+    build:
+      context: ./context-mode
+      dockerfile: Dockerfile
+    container_name: smart-apply-context
+    ports:
+      - "3100:3100"
+    volumes:
+      - context_data:/app/data
+    networks:
+      - smart-apply-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3100/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # ─── 3. Backend — FastAPI + smolagents + PinchTab + Scrapling ────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: smart-apply-backend
+    depends_on:
+      ollama:
+        condition: service_healthy
+      context-mode:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    volumes:
+      - app_data:/app/data
+      - chrome_data:/app/.chrome_data
+      - ./backend/app:/app/app  # Dev: live code reload
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+      - LLM_MODEL=${LLM_MODEL:-qwen2.5-coder:7b}
+      - LLM_CONTEXT_SIZE=${LLM_CONTEXT_SIZE:-8192}
+      - LLM_TEMPERATURE=${LLM_TEMPERATURE:-0.1}
+      - CONTEXT_MODE_URL=http://context-mode:3100
+      - IDENTITY_CSV_PATH=${IDENTITY_CSV_PATH:-/app/data/identity/identity.csv}
+      - RESUME_PDF_PATH=${RESUME_PDF_PATH:-/app/data/identity/resume.pdf}
+      - AGENT_MAX_STEPS=${AGENT_MAX_STEPS:-20}
+      - AGENT_TIMEOUT_SECONDS=${AGENT_TIMEOUT_SECONDS:-300}
+      - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
+      - CHROME_NO_SANDBOX=true
+    networks:
+      - smart-apply-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ─── 4. Frontend — React/Vite Dashboard ──────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_URL=${VITE_API_URL:-http://localhost:8000}
+        - VITE_WS_URL=${VITE_WS_URL:-ws://localhost:8000}
+    container_name: smart-apply-frontend
+    depends_on:
+      - backend
+    ports:
+      - "3000:80"
+    networks:
+      - smart-apply-net
+    restart: unless-stopped
+
+volumes:
+  ollama_data:    # ~4.1 GB — model weights for qwen2.5-coder:7b
+  app_data:       # User identity CSV, resume PDF, session logs
+  context_data:   # SQLite FTS5 database for context-mode
+  chrome_data:    # Chromium browser profile for PinchTab
+
+networks:
+  smart-apply-net:
+    driver: bridge

@@ -1,0 +1,12 @@
+{
+  "name": "context-mode-server",
+  "version": "1.0.0",
+  "description": "SQLite FTS5 context indexing HTTP server for Smart Apply",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^9.4.3"
+  }
+}

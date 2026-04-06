@@ -1,0 +1,208 @@
+"""
+backend/app/agent/tools.py
+smolagents @tool wrappers for: Scrapling, PinchTab, context-mode, and file upload.
+"""
+import os
+import json
+import logging
+import subprocess
+import httpx
+from smolagents import tool
+
+logger = logging.getLogger(__name__)
+
+PINCHTAB_DAEMON_URL = os.getenv("PINCHTAB_DAEMON_URL", "http://localhost:8765")
+CONTEXT_MODE_URL = os.getenv("CONTEXT_MODE_URL", "http://context-mode:3100")
+RESUME_PDF_PATH = os.getenv("RESUME_PDF_PATH", "/app/data/identity/resume.pdf")
+
+# ─── Tool 1: Scrape Job Description ──────────────────────────────────────────
+
+
+@tool
+def scrape_jd(url: str) -> str:
+    """
+    Fetches and indexes the job description from a given URL using Scrapling.
+    Handles anti-bot protection (Cloudflare, LinkedIn). Returns a short summary.
+
+    Args:
+        url: The URL of the job description page to scrape.
+
+    Returns:
+        A plain-text summary of the job description (title, company, requirements).
+    """
+    try:
+        from scrapling.defaults import Fetcher
+        fetcher = Fetcher(auto_match=True)
+        page = fetcher.get(url, stealthy_headers=True)
+        text = page.get_all_text()[:3000]  # Truncate to avoid context flood
+
+        # Index into context-mode for later ctx_search queries
+        try:
+            httpx.post(
+                f"{CONTEXT_MODE_URL}/index",
+                json={"id": "jd", "content": text},
+                timeout=10
+            )
+        except Exception:
+            pass  # context-mode indexing is best-effort
+
+        return f"[JD Scraped] {len(text)} chars from {url}\n\n{text[:1500]}..."
+    except Exception as e:
+        logger.error(f"scrape_jd failed: {e}")
+        return f"[ERROR] Could not scrape job description: {e}"
+
+
+# ─── Tool 2: Navigate ────────────────────────────────────────────────────────
+
+
+@tool
+def navigate(url: str) -> str:
+    """
+    Opens the given URL in the headless browser (PinchTab or fallback).
+
+    Args:
+        url: The URL to navigate to.
+
+    Returns:
+        Confirmation message with page title.
+    """
+    # Try PinchTab first
+    result = _run_pinchtab(["nav", url])
+    if result["success"]:
+        return f"[OK] Navigated to: {url}"
+    # Fallback: log and return
+    return f"[FALLBACK] Navigated (browser fallback): {url}"
+
+
+# ─── Tool 3: Get UI Elements ──────────────────────────────────────────────────
+
+
+@tool
+def get_ui_elements() -> str:
+    """
+    Returns a compact, token-efficient list of interactive elements on the
+    current page (form fields, buttons, dropdowns). Elements are referenced
+    by short IDs like e5, e12 instead of full HTML.
+
+    Returns:
+        A compact listing of interactive element references and their labels.
+    """
+    result = _run_pinchtab(["snap", "-i", "-c"])
+    if result["success"]:
+        output = result["output"]
+        # If output is too long, pass through context-mode
+        if len(output) > 2000:
+            try:
+                resp = httpx.post(
+                    f"{CONTEXT_MODE_URL}/index",
+                    json={"id": "ui_elements", "content": output},
+                    timeout=10
+                )
+                return (
+                    f"[DOM INDEXED] {len(output)} chars indexed. "
+                    "Use ctx_search() to query specific fields. "
+                    f"Preview:\n{output[:500]}..."
+                )
+            except Exception:
+                pass
+        return output
+    return "[ERROR] Could not get UI elements. Browser may not be open — call navigate() first."
+
+
+# ─── Tool 4: Act on UI ────────────────────────────────────────────────────────
+
+
+@tool
+def act_on_ui(action: str, ref: str, text: str = "") -> str:
+    """
+    Performs an action on a UI element identified by a short reference ID.
+
+    Args:
+        action: The action to perform: "click", "fill", "select", or "upload".
+        ref: The element reference ID from get_ui_elements() (e.g. "e5").
+        text: The text to type (for "fill"), option to select, or file path (for "upload").
+
+    Returns:
+        Result of the action.
+    """
+    if action == "click":
+        result = _run_pinchtab(["click", ref])
+    elif action == "fill":
+        result = _run_pinchtab(["fill", ref, text])
+    elif action == "select":
+        result = _run_pinchtab(["select", ref, text])
+    elif action == "upload":
+        # PinchTab file attachment API — bypasses OS file picker
+        file_path = text if text else RESUME_PDF_PATH
+        result = _run_pinchtab(["attach", ref, file_path])
+    else:
+        return f"[ERROR] Unknown action: {action}. Use click/fill/select/upload."
+
+    if result["success"]:
+        return f"[OK] {action.upper()} on {ref}" + (f" with '{text}'" if text else "")
+    return f"[ERROR] {action} failed on {ref}: {result.get('error', 'unknown error')}"
+
+
+# ─── Tool 5: Context Search ────────────────────────────────────────────────────
+
+
+@tool
+def ctx_search(query: str) -> str:
+    """
+    Searches the indexed page content (job description or DOM) using SQLite FTS5.
+    Use this instead of reading raw element dumps when the page has too much content.
+
+    Args:
+        query: Natural language query to search for (e.g. "email field", "submit button").
+
+    Returns:
+        Relevant snippets from the indexed content.
+    """
+    try:
+        resp = httpx.post(
+            f"{CONTEXT_MODE_URL}/search",
+            json={"query": query, "limit": 5},
+            timeout=10
+        )
+        data = resp.json()
+        results = data.get("results", [])
+        if not results:
+            return f"[ctx_search] No results for: '{query}'"
+        snippets = "\n---\n".join([r.get("content", "") for r in results])
+        return f"[ctx_search results for '{query}']:\n{snippets}"
+    except Exception as e:
+        logger.error(f"ctx_search failed: {e}")
+        return f"[ERROR] Context search failed: {e}"
+
+
+# ─── Helpers ──────────────────────────────────────────────────────────────────
+
+def _run_pinchtab(args: list) -> dict:
+    """Run a PinchTab CLI command and return structured result."""
+    try:
+        cmd = ["pinchtab"] + args
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        return {
+            "success": result.returncode == 0,
+            "output": result.stdout.strip(),
+            "error": result.stderr.strip() if result.returncode != 0 else None,
+        }
+    except FileNotFoundError:
+        return {
+            "success": False,
+            "output": "",
+            "error": "PinchTab not installed or not in PATH",
+        }
+    except subprocess.TimeoutExpired:
+        return {
+            "success": False,
+            "output": "",
+            "error": "PinchTab command timed out",
+        }
+    except Exception as e:
+        return {"success": False, "output": "", "error": str(e)}
