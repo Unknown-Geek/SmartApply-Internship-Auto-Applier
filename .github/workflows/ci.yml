@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ── Validate docker-compose ───────────────────────────────────────────────
+  lint-compose:
+    name: Validate Docker Compose
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate docker-compose.yml
+        run: docker compose config --quiet
+
+  # ── Backend Python linting ────────────────────────────────────────────────
+  lint-backend:
+    name: Backend Lint (Python)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install lint tools
+        run: pip install ruff
+      - name: Lint with ruff
+        run: ruff check backend/app/ --ignore E501
+
+  # ── Frontend TypeScript check ─────────────────────────────────────────────
+  lint-frontend:
+    name: Frontend Type Check (TypeScript)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package.json
+      - name: Install dependencies
+        run: cd frontend && npm install
+      - name: TypeScript check
+        run: cd frontend && npx tsc --noEmit
+      - name: Vite build test
+        run: cd frontend && npm run build
+
+  # ── context-mode Node.js syntax check ────────────────────────────────────
+  lint-context:
+    name: context-mode Syntax Check (Node.js)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Syntax check server.js
+        run: node --check context-mode/server.js
