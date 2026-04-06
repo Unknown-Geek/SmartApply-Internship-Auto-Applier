@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import logging
 
-from app.api import jobs, ws, health
+from app.api import jobs, ws, health, identity
 from app.data.identity import load_identity
 from app.agent.agent import warmup_agent
 
@@ -57,4 +57,5 @@ app.add_middleware(
 # ─── Routers ───────────────────────────────────────────────────────────────────
 app.include_router(health.router, prefix="/api")
 app.include_router(jobs.router, prefix="/api/jobs", tags=["Jobs"])
+app.include_router(identity.router, prefix="/api", tags=["Identity"])
 app.include_router(ws.router, tags=["WebSocket"])

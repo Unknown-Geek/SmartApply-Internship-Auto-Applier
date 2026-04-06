@@ -4,6 +4,7 @@ import { AgentTerminal } from './components/AgentTerminal'
 import { StatusBadge } from './components/StatusBadge'
 import { HealthBar } from './components/HealthBar'
 import { TaskHistory } from './components/TaskHistory'
+import { IdentityPanel } from './components/IdentityPanel'
 import { useAgentSocket } from './hooks/useAgentSocket'
 import './App.css'
 
@@ -107,6 +108,9 @@ export default function App() {
             and hits submit — while you watch every step in real time.
           </p>
         </section>
+
+        {/* Identity upload */}
+        <IdentityPanel onIdentityLoaded={() => setHealth(h => h ? {...h, identity_loaded: true} : h)} />
 
         {/* Job input */}
         <JobInput onSubmit={handleApply} isLoading={isSubmitting} />
