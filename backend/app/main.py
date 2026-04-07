@@ -2,14 +2,15 @@
 backend/app/main.py
 FastAPI application entrypoint with lifespan, CORS, and router registration.
 """
+import logging
 from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-import logging
 
-from app.api import jobs, ws, health, identity
-from app.data.identity import load_identity
 from app.agent.agent import warmup_agent
+from app.api import health, identity, jobs, ws
+from app.data.identity import load_identity
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s — %(message)s")
 logger = logging.getLogger(__name__)

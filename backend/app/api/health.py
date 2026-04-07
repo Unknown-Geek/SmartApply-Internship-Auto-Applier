@@ -1,9 +1,11 @@
 """backend/app/api/health.py — Detailed health check endpoint."""
 import os
+from typing import Optional
+
 import httpx
 from fastapi import APIRouter
 from pydantic import BaseModel
-from typing import Optional
+
 from app.data.identity import _identity
 
 router = APIRouter()

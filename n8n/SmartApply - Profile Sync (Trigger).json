@@ -1,0 +1,179 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "hour": 15
+            }
+          ]
+        },
+        "documentId": {
+          "__rl": true,
+          "value": "11olBJbiekeJqaM0wo8ezrWg3QYpVTQNwffqg2-ZIMpk",
+          "mode": "list",
+          "cachedResultName": "Profile Data",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/11olBJbiekeJqaM0wo8ezrWg3QYpVTQNwffqg2-ZIMpk/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1573782176,
+          "mode": "list",
+          "cachedResultName": "profileData",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/11olBJbiekeJqaM0wo8ezrWg3QYpVTQNwffqg2-ZIMpk/edit#gid=1573782176"
+        },
+        "options": {}
+      },
+      "id": "6e25c88a-29f9-49b1-bb76-79a4f3589cda",
+      "name": "On Profile Update",
+      "type": "n8n-nodes-base.googleSheetsTrigger",
+      "typeVersion": 1,
+      "position": [
+        -928,
+        96
+      ],
+      "credentials": {
+        "googleSheetsTriggerOAuth2Api": {
+          "id": "cywpHZeuyXybUohU",
+          "name": "TVE23CS131"
+        }
+      },
+      "notes": "Triggers when rows are updated in the profileData sheet."
+    },
+    {
+      "parameters": {
+        "jsCode": "const profile = {};\nfor (const item of $input.all()) {\n    if (item.json.Key && item.json.Value) {\n        profile[item.json.Key] = item.json.Value;\n    }\n}\nreturn [{ json: { profile: profile } }];"
+      },
+      "id": "8b6cac1c-5513-4e32-8321-524a922b3008",
+      "name": "Build Profile JSON",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -704,
+        96
+      ],
+      "notes": "Converts rows into a single key-value JSON object."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://172.18.0.1:8000/profile/ingest/direct",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.profile) }}",
+        "options": {}
+      },
+      "id": "6fa025af-f8a7-4256-b4f4-d584fb33b33b",
+      "name": "Send to SmartApply API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -480,
+        96
+      ],
+      "onError": "continueErrorOutput",
+      "notes": "POSTs the profile JSON directly to the SmartApply backend."
+    },
+    {
+      "parameters": {
+        "chatId": "1319914424",
+        "text": "=✅ *Profile Auto-Synced!*\nDetected changes in your Google Sheet and pushed them to SmartApply.\nUpdated fields: {{ Object.keys($('Build Profile JSON').item.json.profile).length }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        -256,
+        0
+      ],
+      "id": "38d3be29-e889-44fe-9b6a-88020deacc1c",
+      "name": "Notify Success",
+      "webhookId": "15cf7142-44bc-4edb-b026-0f7087c0ddb8",
+      "credentials": {
+        "telegramApi": {
+          "id": "dJYdBCtto72sPTe9",
+          "name": "Smart Apply Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "1319914424",
+        "text": "=❌ Profile sync FAILED!\nCould not send data to SmartApply API.",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        -256,
+        192
+      ],
+      "id": "2122b547-a2a3-473e-b50c-39230a802d76",
+      "name": "Notify Failure",
+      "webhookId": "15cf7142-44bc-4edb-b026-0f7087c0ddb8",
+      "credentials": {
+        "telegramApi": {
+          "id": "dJYdBCtto72sPTe9",
+          "name": "Smart Apply Bot"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "On Profile Update": {
+      "main": [
+        [
+          {
+            "node": "Build Profile JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Profile JSON": {
+      "main": [
+        [
+          {
+            "node": "Send to SmartApply API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send to SmartApply API": {
+      "main": [
+        [
+          {
+            "node": "Notify Success",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Notify Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notify Success": {
+      "main": [
+        []
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "19921415bac6b77b91e822c3e97165800ced3a4d6f63d204500fd50a2d359050"
+  }
+}

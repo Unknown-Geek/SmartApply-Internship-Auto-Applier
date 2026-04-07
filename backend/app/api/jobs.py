@@ -3,16 +3,17 @@ backend/app/api/jobs.py
 REST endpoints for job application task management.
 """
 import asyncio
-import uuid
 import json
 import os
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from typing import Dict
-from fastapi import APIRouter, BackgroundTasks, HTTPException, UploadFile, File
 
-from app.models.schemas import ApplyRequest, TaskResponse, TaskStatus, LogEntry
+from fastapi import APIRouter, BackgroundTasks, File, HTTPException, UploadFile
+
 from app.agent.agent import run_agent
+from app.models.schemas import ApplyRequest, LogEntry, TaskResponse, TaskStatus
 
 router = APIRouter()
 

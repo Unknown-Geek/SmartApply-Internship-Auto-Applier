@@ -1,7 +1,8 @@
 """backend/app/data/identity.py — Loads applicant identity from CSV into memory."""
-import os
 import logging
+import os
 from typing import Optional
+
 import pandas as pd
 
 logger = logging.getLogger(__name__)

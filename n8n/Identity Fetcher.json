@@ -1,0 +1,95 @@
+{
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "e3f5a99b-a5c1-4315-925e-dbc1b24beec0",
+      "name": "When Called by Another Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "=11olBJbiekeJqaM0wo8ezrWg3QYpVTQNwffqg2-ZIMpk",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1573782176,
+          "mode": "list",
+          "cachedResultName": "profileData",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/11olBJbiekeJqaM0wo8ezrWg3QYpVTQNwffqg2-ZIMpk/edit#gid=1573782176"
+        },
+        "options": {}
+      },
+      "id": "416786f2-6680-4ddd-b743-65054646f3bf",
+      "name": "Read User Profile Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        224,
+        0
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "IlUP2Ct5qrErA6VN",
+          "name": "Mojo Google Sheets"
+        }
+      },
+      "notes": "Reads all rows from the 'User Profile' sheet.\nExpects columns: field_name, field_value\nConfigure your Google Sheets credentials and document ID."
+    },
+    {
+      "parameters": {
+        "jsCode": "// n8n Code Node - Updated for Master Profile\nconst allData = items.map(item => item.json);\n\nconst profile = {\n  personal: {},\n  education_details: {}, // Changed to object to capture specific keys like Degree, University\n  links: {},\n  documents: {}, // New category for Drive links\n  experience: [], // New category\n  leadership: [], // New category\n  projects: [],\n  certifications: [],\n  volunteering: [],\n  skills: {\n    technical: [],\n    design: [],\n    soft: [],\n    ai_llm: [],\n    devops: [],\n    languages: [] \n  }\n};\n\nfor (const row of allData) {\n  const key = row.Key;\n  let val = row.Value;\n\n  if (!key || !val) continue;\n\n  // Clean up value if string\n  if (typeof val === 'string') val = val.trim();\n\n  // --- 1. PROJECTS ---\n  if (key.startsWith('Project:')) {\n    const projectName = key.replace('Project:', '').trim();\n    profile.projects.push({\n      name: projectName,\n      details: val\n    });\n\n  // --- 2. EXPERIENCE ---\n  } else if (key.startsWith('Experience:')) {\n    const company = key.replace('Experience:', '').trim();\n    profile.experience.push({\n      company: company,\n      role_details: val\n    });\n\n  // --- 3. LEADERSHIP ---\n  } else if (key.startsWith('Leadership:')) {\n    const org = key.replace('Leadership:', '').trim();\n    profile.leadership.push({\n      organization: org,\n      role: val\n    });\n\n  // --- 4. DOCUMENTS ---\n  } else if (key.startsWith('Document:')) {\n    const docName = key.replace('Document:', '').trim();\n    profile.documents[docName] = val;\n\n  // --- 5. CERTIFICATIONS & VOLUNTEERING ---\n  } else if (key.startsWith('Certification:')) {\n    const certName = key.replace('Certification:', '').trim();\n    profile.certifications.push({ name: certName, details: val });\n  } else if (key.startsWith('Volunteering:')) {\n    const volName = key.replace('Volunteering:', '').trim();\n    profile.volunteering.push({ name: volName, role: val });\n\n  // --- 6. LINKS & URLS ---\n  } else if (key.includes('URL') || key.includes('Link')) {\n    const cleanKey = key.replace(' URL', '').replace(' Link', '').trim();\n    profile.links[cleanKey] = val;\n\n  // --- 7. SKILLS (Comma Separated Splitting) ---\n  } else if (key.startsWith('Skill:')) {\n    const skillList = val.split(',').map(s => s.trim()); // Split \"React, Node\" into array\n    \n    if (key.includes('Design')) profile.skills.design.push(...skillList);\n    else if (key.includes('Soft')) profile.skills.soft.push(...skillList);\n    else if (key.includes('AI') || key.includes('LLM')) profile.skills.ai_llm.push(...skillList);\n    else if (key.includes('DevOps')) profile.skills.devops.push(...skillList);\n    else if (key.includes('Languages')) profile.skills.languages.push(...skillList);\n    else profile.skills.technical.push(...skillList);\n\n  // --- 8. EDUCATION SPECIFICS ---\n  } else if (['University', 'Degree', 'Major', 'CGPA', 'Current Semester', 'Year of Graduation', 'High School (12th)', 'High School (10th)'].some(k => key.includes(k))) {\n    profile.education_details[key] = val;\n\n  // --- 9. PERSONAL (Catch All) ---\n  } else {\n    profile.personal[key] = val;\n  }\n}\n\n// Return raw object (NOT stringified) for proper mapping\nreturn [{ json: profile }];"
+      },
+      "id": "b395b08f-9749-4970-a21d-a211c01257a2",
+      "name": "Transform to Clean JSON",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        0
+      ],
+      "notes": "Transforms sheet rows into a clean JSON object.\nKeys are normalized to snake_case.\nHandles various column naming conventions."
+    }
+  ],
+  "connections": {
+    "When Called by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Read User Profile Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read User Profile Sheet": {
+      "main": [
+        [
+          {
+            "node": "Transform to Clean JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transform to Clean JSON": {
+      "main": [
+        []
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "19921415bac6b77b91e822c3e97165800ced3a4d6f63d204500fd50a2d359050"
+  }
+}

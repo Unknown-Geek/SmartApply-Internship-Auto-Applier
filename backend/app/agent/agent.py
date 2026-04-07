@@ -3,16 +3,17 @@ backend/app/agent/agent.py
 smolagents CodeAgent initialization with qwen2.5-coder:7b via Ollama.
 Includes retry logic and structured error recovery.
 """
-import os
 import asyncio
 import logging
+import os
 import time
 from typing import Callable, Optional
+
 import httpx
 from smolagents import CodeAgent, LiteLLMModel
 
-from app.agent.tools import scrape_jd, navigate, get_ui_elements, act_on_ui, ctx_search
 from app.agent.prompt import build_prompt
+from app.agent.tools import act_on_ui, ctx_search, get_ui_elements, navigate, scrape_jd
 from app.data.identity import get_identity_text
 
 logger = logging.getLogger(__name__)
@@ -137,10 +138,7 @@ def run_agent(
             last_error = e
             err_str = str(e)
 
-            # Classify error for smarter retry decisions
-            is_transient = any(kw in err_str.lower() for kw in [
-                "timeout", "connection", "refused", "network", "temporarily"
-            ])
+            # Classify error — permanent errors are not retried
             is_permanent = any(kw in err_str.lower() for kw in [
                 "invalid url", "404", "403", "not found"
             ])

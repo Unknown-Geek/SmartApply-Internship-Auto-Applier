@@ -1,0 +1,174 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "smartapply-queue",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "de2506e1-6d1c-4501-9073-a74c56161c56",
+      "name": "Queue Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "smartapply-queue",
+      "notes": "Receives URLs to queue for batch processing.\nExpected body: { \"url\": \"https://...\", \"source\": \"Telegram Bot\" }"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "url",
+              "name": "url",
+              "type": "string",
+              "value": "={{ $json.body.url }}"
+            },
+            {
+              "id": "status",
+              "name": "status",
+              "type": "string",
+              "value": "PENDING"
+            },
+            {
+              "id": "queued_at",
+              "name": "queued_at",
+              "type": "string",
+              "value": "={{ new Date().toISOString() }}"
+            },
+            {
+              "id": "company",
+              "name": "company",
+              "type": "string",
+              "value": "={{ $json.body.company || '' }}"
+            },
+            {
+              "id": "title",
+              "name": "title",
+              "type": "string",
+              "value": "={{ $json.body.title || '' }}"
+            },
+            {
+              "id": "source",
+              "name": "source",
+              "type": "string",
+              "value": "={{ $json.body.source || 'Manual' }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "67846dd7-76ba-41b8-abe4-dd4b7447a659",
+      "name": "Prepare Row",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        240,
+        0
+      ],
+      "notes": "Sets initial status to PENDING."
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1ScwX6Qa1UJCRFL083FEnCwlunB2HgwVg3psIVYTyr8M",
+          "mode": "list",
+          "cachedResultName": "Smart Apply",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1ScwX6Qa1UJCRFL083FEnCwlunB2HgwVg3psIVYTyr8M/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 177523264,
+          "mode": "list",
+          "cachedResultName": "Links",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1ScwX6Qa1UJCRFL083FEnCwlunB2HgwVg3psIVYTyr8M/edit#gid=177523264"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "923226cc-712d-4d25-96eb-f48610b7038a",
+      "name": "Add to Queue Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        464,
+        0
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "WaMY1APLGlXdINip",
+          "name": "TVE23CS131"
+        }
+      },
+      "notes": "Appends the new URL to the 'Applications' sheet."
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"success\": true,\n  \"message\": \"URL queued successfully!\",\n  \"url\": \"{{ $('Prepare Row').item.json.url }}\"\n}",
+        "options": {}
+      },
+      "id": "de4f67de-a575-446a-9fea-56a06ed9f738",
+      "name": "Respond OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        688,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Queue Webhook": {
+      "main": [
+        [
+          {
+            "node": "Prepare Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Row": {
+      "main": [
+        [
+          {
+            "node": "Add to Queue Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add to Queue Sheet": {
+      "main": [
+        [
+          {
+            "node": "Respond OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "19921415bac6b77b91e822c3e97165800ced3a4d6f63d204500fd50a2d359050"
+  }
+}

@@ -2,10 +2,11 @@
 backend/app/agent/tools.py
 smolagents @tool wrappers for: Scrapling, PinchTab, context-mode, and file upload.
 """
-import os
 import json
 import logging
+import os
 import subprocess
+
 import httpx
 from smolagents import tool
 
@@ -93,7 +94,7 @@ def get_ui_elements() -> str:
         # If output is too long, pass through context-mode
         if len(output) > 2000:
             try:
-                resp = httpx.post(
+                httpx.post(
                     f"{CONTEXT_MODE_URL}/index",
                     json={"id": "ui_elements", "content": output},
                     timeout=10

@@ -5,9 +5,10 @@ WebSocket endpoint for live streaming of agent logs.
 import asyncio
 import json
 from datetime import datetime
+
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from app.api.jobs import _tasks, _get_task
+from app.api.jobs import _get_task, _tasks
 
 router = APIRouter()
 

@@ -4,12 +4,13 @@ Endpoints for uploading and viewing the applicant identity CSV and resume PDF.
 """
 import os
 import shutil
-from fastapi import APIRouter, UploadFile, File, HTTPException
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel
 from typing import Optional
 
-from app.data.identity import load_identity, get_identity, _identity
+from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
+
+from app.data.identity import _identity, get_identity, load_identity
 
 router = APIRouter()
 
