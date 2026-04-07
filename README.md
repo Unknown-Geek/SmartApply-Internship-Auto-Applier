@@ -9,7 +9,7 @@ Powered by `qwen2.5-coder:7b` running locally via Ollama. No cloud API keys requ
 ## 🚀 Quick Start (Single Command)
 
 ```bash
-git clone https://github.com/youruser/smart-apply.git
+git clone https://github.com/Unknown-Geek/smart-apply.git
 cd smart-apply
 
 # 1. Copy and edit your identity
@@ -93,10 +93,33 @@ Copy your resume: `cp /path/to/resume.pdf data/identity/resume.pdf`
 | `LLM_MODEL` | `qwen2.5-coder:7b` | Ollama model to use |
 | `LLM_CONTEXT_SIZE` | `8192` | Context window (ARM-optimized) |
 | `AGENT_MAX_STEPS` | `20` | Max agent steps before giving up |
+| `N8N_LOG_WEBHOOK_URL` | *(empty)* | n8n webhook to log results (optional) |
 
 See `.env.example` for all options.
 
 ---
+
+## 🔗 n8n Automation (Optional)
+
+Smart Apply ships with four ready-to-import **n8n** workflow JSONs in the `n8n/` directory that wire it to Google Sheets and Telegram:
+
+| Workflow | What it does |
+|----------|-------------|
+| **Identity Fetcher** | Sub-workflow: reads your profile Google Sheet → structured JSON |
+| **Profile Sync (Trigger)** | Polls sheet daily → `POST /profile/ingest/direct` to hot-reload identity |
+| **Queue Application** | Webhook: receive a job URL → append to queue sheet |
+| **Application Logger** | Webhook: receive result → log to Sheets + Telegram notification |
+
+### Setup steps
+1. Import each JSON into your n8n instance (**Workflows → Import from file**)
+2. Set your Google Sheets & Telegram credentials in n8n
+3. Update the backend host IP in **Profile Sync** (`172.18.0.1` = Docker bridge default on Linux)
+4. Set `N8N_LOG_WEBHOOK_URL` in your `.env` to enable result logging
+
+```
+GET  /profile/schema          ← shows expected profile JSON shape
+POST /profile/ingest/direct   ← n8n pushes profile here (auto-reloads identity)
+```
 
 ## 🖥️ Hardware Requirements
 
