@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from typing import Dict
 
+import httpx
 from fastapi import APIRouter, BackgroundTasks, File, HTTPException, UploadFile
 
 from app.agent.agent import run_agent
@@ -26,8 +27,49 @@ _tasks: Dict[str, dict] = {}
 SESSIONS_DIR = os.getenv("SESSIONS_DIR", "/app/data/sessions")
 os.makedirs(SESSIONS_DIR, exist_ok=True)
 
+# Optional n8n Application Logger webhook (set N8N_LOG_WEBHOOK_URL in .env)
+N8N_LOG_WEBHOOK_URL = os.getenv("N8N_LOG_WEBHOOK_URL", "")
+
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
+
+def _notify_n8n_logger(job_url: str, status: str, result: str = "") -> None:
+    """
+    Fire-and-forget POST to the n8n Application Logger webhook.
+
+    Sends the payload shape expected by the 'SmartApply - Application Logger'
+    n8n workflow:
+      { url, status, details, fields_filled, company, title, issues }
+
+    Silently skips if N8N_LOG_WEBHOOK_URL is not configured.
+    Runs synchronously inside the agent thread — never blocks a job run because
+    it uses a short timeout and all exceptions are swallowed.
+    """
+    if not N8N_LOG_WEBHOOK_URL:
+        return
+    try:
+        # Best-effort keyword extraction from result string
+        fields_filled = 0
+        if "filled" in result.lower():
+            import re
+            m = re.search(r"(\d+)\s*field", result, re.IGNORECASE)
+            if m:
+                fields_filled = int(m.group(1))
+
+        payload = {
+            "url": job_url,
+            "status": status,          # "success" | "failed"
+            "details": result[:500],   # truncate for Sheets cell limit
+            "fields_filled": fields_filled,
+            "company": "",             # n8n can enrich this from the queue sheet
+            "title": "",
+            "issues": [] if status == "success" else [result[:200]],
+        }
+        httpx.post(N8N_LOG_WEBHOOK_URL, json=payload, timeout=10)
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning(f"n8n log webhook failed (non-fatal): {exc}")
+
 
 def _get_task(task_id: str) -> dict:
     if task_id not in _tasks:
@@ -89,10 +131,12 @@ def _run_agent_task(task_id: str, job_url: str):
         _tasks[task_id]["status"] = TaskStatus.COMPLETED.value
         _tasks[task_id]["result"] = str(result)
         _append_log(task_id, "info", f"✅ Application completed: {result}")
+        _notify_n8n_logger(job_url=job_url, status="success", result=str(result))
     except Exception as e:
         _tasks[task_id]["status"] = TaskStatus.FAILED.value
         _tasks[task_id]["error"] = str(e)
         _append_log(task_id, "error", f"❌ Agent failed: {e}")
+        _notify_n8n_logger(job_url=job_url, status="failed", result=str(e))
     finally:
         _tasks[task_id]["updated_at"] = datetime.utcnow().isoformat()
         _persist_task(task_id)

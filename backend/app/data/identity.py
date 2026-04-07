@@ -1,7 +1,9 @@
-"""backend/app/data/identity.py — Loads applicant identity from CSV into memory."""
+"""backend/app/data/identity.py — Loads applicant identity from CSV into memory.
+Also accepts structured JSON profiles pushed directly from n8n."""
+import csv
 import logging
 import os
-from typing import Optional
+from typing import Any, Optional
 
 import pandas as pd
 
@@ -47,3 +49,56 @@ def get_identity_text() -> str:
     identity = get_identity()
     lines = [f"  {k}: {v}" for k, v in identity.items()]
     return "Applicant Identity Data:\n" + "\n".join(lines)
+
+
+def _flatten(obj: Any, prefix: str = "") -> dict:
+    """
+    Recursively flatten a nested dict/list into dot-notation key→value pairs.
+    Lists of dicts are indexed (projects.0.name, projects.1.name).
+    Lists of scalars are joined with ', '.
+    """
+    out = {}
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            full_key = f"{prefix}.{k}" if prefix else str(k)
+            out.update(_flatten(v, full_key))
+    elif isinstance(obj, list):
+        if all(isinstance(i, dict) for i in obj):
+            for idx, item in enumerate(obj):
+                out.update(_flatten(item, f"{prefix}.{idx}"))
+        else:
+            # scalar list → comma-joined string
+            out[prefix] = ", ".join(str(i) for i in obj)
+    else:
+        if prefix:
+            out[prefix] = str(obj) if obj is not None else ""
+    return out
+
+
+def ingest_profile_json(profile: dict, csv_path: Optional[str] = None) -> dict:
+    """
+    Accept a rich JSON profile from n8n (nested personal/skills/projects/…),
+    flatten it to a key→value dict, persist as CSV, and hot-reload _identity.
+
+    Returns the flattened identity dict.
+    """
+    global _identity
+
+    flat = _flatten(profile)
+    _identity = flat
+    logger.info(f"Profile ingested from n8n — {len(flat)} fields")
+
+    # Persist to CSV so the identity survives container restarts
+    dest = csv_path or os.getenv("IDENTITY_CSV_PATH", "/app/data/identity/identity.csv")
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    try:
+        with open(dest, "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerow(["field", "value"])
+            for field, value in flat.items():
+                writer.writerow([field, value])
+        logger.info(f"Identity CSV updated at {dest} ({len(flat)} rows)")
+    except Exception as exc:
+        logger.warning(f"Could not persist identity CSV: {exc}")
+
+    return flat

@@ -4,6 +4,39 @@
 
 ---
 
+## Session 3 — 2026-04-07
+
+### ✅ Completed
+- [x] **CI fixes — all checks now passing (exit 0)**
+  - `ruff --fix`: sorted all import blocks (I001) across 10 backend files
+  - `agent.py`: removed unused `is_transient` variable (F841)
+  - `tools.py`: removed unused `resp` assignment on fire-and-forget POST (F841)
+  - `.github/workflows/ci.yml`: bumped `actions/checkout` v4→v5, `setup-node` v4→v6
+  - `ci.yml`: pinned `node-version` to `"24"` (clears Node.js 20 deprecation warnings)
+- [x] **n8n workflow files committed** (`n8n/` directory)
+  - `Identity Fetcher.json` — sub-workflow: reads Google Sheet, transforms rows → structured profile JSON
+  - `SmartApply - Application Logger.json` — webhook receiver: logs results to Sheets + Telegram
+  - `SmartApply - Queue Application.json` — webhook: queues job URLs into Google Sheets
+  - `SmartApply - Profile Sync (Trigger).json` — daily poll: pushes profile changes to backend
+- [x] **n8n ↔ Backend integration implemented**
+  - `data/identity.py`: added `_flatten()` + `ingest_profile_json()` — accepts rich nested profile JSON, flattens to dot-notation, persists as CSV, hot-reloads `_identity`
+  - `api/identity.py`: added `POST /profile/ingest/direct` (consumed by Profile Sync workflow) + `GET /profile/schema` (documents expected shape)
+  - `api/jobs.py`: added `_notify_n8n_logger()` — fire-and-forget POST to Application Logger webhook on every agent run (success + failure); opt-in via `N8N_LOG_WEBHOOK_URL`
+  - `.env.example`: documented `N8N_LOG_WEBHOOK_URL` + `N8N_BACKEND_HOST`
+
+### 📋 To Do (Session 4+)
+- [ ] Validate Docker build end-to-end (`docker compose build`)
+- [ ] Integration test — apply to a public sample form (e.g. Breezy HR test job)
+- [ ] Ink CLI (`npm create ink-app`) for terminal mode
+- [ ] Auth layer (API key) for multi-user
+- [ ] Rate limiting / job queue (Redis + Celery or FastAPI BackgroundTasks queue)
+- [ ] Scrapling anti-bot fine-tuning (LinkedIn specific)
+- [ ] PinchTab multi-tab support for parallel applications
+- [ ] Frontend: show live tok/s performance metric from Ollama `/api/generate` stream
+- [ ] n8n Queue Application → auto-trigger `POST /api/jobs/apply` (close the loop)
+
+---
+
 ## Session 2 — 2026-04-07
 
 ### ✅ Completed
@@ -33,19 +66,6 @@
   - `.github/workflows/ci.yml`: ruff lint, TS type check, Vite build, node syntax, compose validation
   - `pyproject.toml`: ruff linter config
 
-### 🔄 In Progress
-- None — session 2 complete
-
-### 📋 To Do (Session 3+)
-- [ ] Validate Docker build end-to-end (`docker compose build`)
-- [ ] Integration test — apply to a public sample form (e.g. Breezy HR test job)
-- [ ] Ink CLI (`npm create ink-app`) for terminal mode
-- [ ] Slack/email notification webhook on job completion
-- [ ] Auth layer (API key) for multi-user
-- [ ] Rate limiting / job queue (Redis + Celery or FastAPI BackgroundTasks queue)
-- [ ] Scrapling anti-bot fine-tuning (LinkedIn specific)
-- [ ] PinchTab multi-tab support for parallel applications
-- [ ] Frontend: show live tok/s performance metric from Ollama `/api/generate` stream
 
 ---
 
