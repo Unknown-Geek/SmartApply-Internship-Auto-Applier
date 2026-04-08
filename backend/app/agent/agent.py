@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import threading
 import time
 from typing import Callable, Optional
 
@@ -15,7 +16,33 @@ import subprocess
 
 logger = logging.getLogger(__name__)
 
+# Thread-local storage so the module-level controller can call the
+# per-task user_input_fn without any shared mutable global state.
+_run_ctx = threading.local()
+
 controller = Controller()
+
+
+@controller.action(
+    'Ask the human operator for information that is missing or unknown. '
+    'Use this when you encounter a login form, a field you cannot fill from '
+    'identity data, an OTP prompt, or any security challenge. '
+    'Blocks until the human replies via Telegram.'
+)
+def ask_user(question: str) -> str:
+    """
+    Pause the agent and ask the human operator for input.
+
+    Args:
+        question: The exact question to ask (e.g. "What is your LinkedIn password?").
+
+    Returns:
+        The human\'s answer as a plain string.
+    """
+    fn: Optional[Callable[[str], str]] = getattr(_run_ctx, 'user_input_fn', None)
+    if fn is None:
+        return "[SKIPPED] No user-input handler configured for this run."
+    return fn(question)
 
 @controller.action('Download a file from a Google Drive URL to the local disk. Returns the absolute file path which you can then use for file inputs.')
 def download_file_from_drive(gdrive_url: str) -> str:
@@ -81,24 +108,28 @@ async def warmup_agent() -> bool:
 def run_agent(
     job_url: str,
     log_callback: Optional[Callable[[str, str], None]] = None,
+    user_input_fn: Optional[Callable[[str], str]] = None,
 ) -> str:
     """
     Run the browser-use Agent to apply to a job.
 
-    Retries up to MAX_RUN_RETRIES times on transient errors (network, timeout).
-    Raises on permanent errors (bad URL, identity missing, etc.).
-
     Args:
-        job_url: The job application URL.
-        log_callback: Optional callback(level, message) for live streaming.
+        job_url:        The job application URL.
+        log_callback:   Optional callback(level, message) for live streaming.
+        user_input_fn:  Optional callback(question) -> answer for human-in-the-loop.
+                        When provided, the agent may call ask_user() and block
+                        until the operator supplies an answer.
 
     Returns:
-        Final result string ("SUCCESS", "BLOCKED", or last agent output).
+        Final result string.
     """
     def _log(level: str, msg: str):
         logger.info(f"[{level.upper()}] {msg}")
         if log_callback:
             log_callback(level, msg)
+
+    # Inject per-run user_input_fn into thread-local so ask_user() can reach it
+    _run_ctx.user_input_fn = user_input_fn
 
     model = _make_model()
 

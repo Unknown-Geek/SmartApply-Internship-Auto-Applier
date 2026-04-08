@@ -58,13 +58,17 @@ async def agent_logs_ws(websocket: WebSocket, task_id: str):
                 await websocket.send_text(json.dumps(_serialize_log(log)))
                 sent_count += 1
 
-            # Always send a status heartbeat
-            await websocket.send_text(json.dumps({
+            # Status heartbeat — include pending question when agent is waiting
+            heartbeat: dict = {
                 "type": "status",
                 "status": status,
                 "step": sent_count,
                 "timestamp": datetime.utcnow().isoformat(),
-            }))
+            }
+            if status == "waiting":
+                heartbeat["question"] = task.get("question")
+
+            await websocket.send_text(json.dumps(heartbeat))
 
             # If terminal state, send final summary and close
             if status in TERMINAL_STATES:

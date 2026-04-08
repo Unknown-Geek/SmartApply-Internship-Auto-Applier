@@ -14,7 +14,8 @@ import httpx
 from fastapi import APIRouter, BackgroundTasks, File, HTTPException, UploadFile
 
 from app.agent.agent import run_agent
-from app.models.schemas import ApplyRequest, LogEntry, TaskResponse, TaskStatus
+from app.agent import human_input
+from app.models.schemas import AnswerRequest, ApplyRequest, LogEntry, TaskResponse, TaskStatus
 
 router = APIRouter()
 
@@ -29,6 +30,8 @@ os.makedirs(SESSIONS_DIR, exist_ok=True)
 
 # Optional n8n Application Logger webhook (set N8N_LOG_WEBHOOK_URL in .env)
 N8N_LOG_WEBHOOK_URL = os.getenv("N8N_LOG_WEBHOOK_URL", "")
+# Webhook n8n calls when the agent needs a human answer (set N8N_QUESTION_WEBHOOK_URL in .env)
+N8N_QUESTION_WEBHOOK_URL = os.getenv("N8N_QUESTION_WEBHOOK_URL", "")
 
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -126,8 +129,39 @@ def _run_agent_task(task_id: str, job_url: str):
         step_counter[0] += 1
         _append_log(task_id, level, message, step=step_counter[0])
 
+    def user_input_fn(question: str) -> str:
+        """Called by the agent when it needs a human answer. Blocks until answered."""
+        _tasks[task_id]["status"] = TaskStatus.WAITING.value
+        _tasks[task_id]["question"] = question
+        _tasks[task_id]["updated_at"] = datetime.utcnow().isoformat()
+        _persist_task(task_id)
+        _append_log(task_id, "info", f"⏸️  Agent waiting for human input: {question}")
+
+        # Notify n8n → Telegram
+        if N8N_QUESTION_WEBHOOK_URL:
+            try:
+                httpx.post(
+                    N8N_QUESTION_WEBHOOK_URL,
+                    json={"task_id": task_id, "question": question},
+                    timeout=10,
+                )
+            except Exception as exc:
+                import logging as _log
+                _log.getLogger(__name__).warning(f"n8n question webhook failed: {exc}")
+
+        # Block here until the operator answers via /api/jobs/{task_id}/answer
+        answer = human_input.request_input(task_id, question)
+
+        # Resume
+        _tasks[task_id]["status"] = TaskStatus.RUNNING.value
+        _tasks[task_id]["question"] = None
+        _tasks[task_id]["updated_at"] = datetime.utcnow().isoformat()
+        _persist_task(task_id)
+        _append_log(task_id, "info", f"▶️  Resuming — operator answered: {answer[:80]}")
+        return answer
+
     try:
-        result = run_agent(job_url=job_url, log_callback=log_callback)
+        result = run_agent(job_url=job_url, log_callback=log_callback, user_input_fn=user_input_fn)
         _tasks[task_id]["status"] = TaskStatus.COMPLETED.value
         _tasks[task_id]["result"] = str(result)
         _append_log(task_id, "info", f"✅ Application completed: {result}")
@@ -170,6 +204,33 @@ async def apply_for_job(request: ApplyRequest):
     loop.run_in_executor(_executor, _run_agent_task, task_id, request.job_url)
 
     return _task_to_response(_tasks[task_id])
+
+
+@router.get("/waiting", response_model=list[dict])
+async def get_waiting_tasks():
+    """Return all tasks currently paused waiting for human input."""
+    return human_input.list_waiting()
+
+
+@router.post("/{task_id}/answer")
+async def answer_task(task_id: str, body: AnswerRequest):
+    """
+    Provide a human answer to an agent that is waiting for input.
+    The agent thread unblocks immediately and resumes with the supplied answer.
+    """
+    task = _get_task(task_id)  # raises 404 if not found
+    if task.get("status") != TaskStatus.WAITING.value:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Task {task_id} is not in WAITING state (current: {task.get('status')})",
+        )
+    unblocked = human_input.provide_answer(task_id, body.answer)
+    if not unblocked:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Task {task_id} is not waiting for input right now.",
+        )
+    return {"ok": True, "task_id": task_id, "message": "Answer delivered — agent resuming."}
 
 
 @router.get("/{task_id}", response_model=TaskResponse)

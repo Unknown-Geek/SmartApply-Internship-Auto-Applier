@@ -9,6 +9,7 @@ from pydantic import BaseModel, HttpUrl
 class TaskStatus(str, Enum):
     PENDING = "pending"
     RUNNING = "running"
+    WAITING = "waiting"   # paused — agent needs human input
     COMPLETED = "completed"
     FAILED = "failed"
 
@@ -25,6 +26,10 @@ class LogEntry(BaseModel):
     step: Optional[int] = None
 
 
+class AnswerRequest(BaseModel):
+    answer: str
+
+
 class TaskResponse(BaseModel):
     task_id: str
     status: TaskStatus
@@ -34,6 +39,7 @@ class TaskResponse(BaseModel):
     logs: List[LogEntry] = []
     result: Optional[str] = None
     error: Optional[str] = None
+    question: Optional[str] = None  # set when status == WAITING
 
 
 class HealthResponse(BaseModel):
