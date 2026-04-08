@@ -41,3 +41,6 @@ ollama_data/
 # SQLite DBs
 *.db
 *.sqlite
+
+# n8n workflows (contains credentials)
+n8n/
