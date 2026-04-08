@@ -16,6 +16,22 @@ PINCHTAB_API_URL = os.getenv("PINCHTAB_DAEMON_URL", "http://localhost:9867")
 CONTEXT_MODE_URL = os.getenv("CONTEXT_MODE_URL", "http://context-mode:3100")
 RESUME_PDF_PATH = os.getenv("RESUME_PDF_PATH", "/app/data/identity/resume.pdf")
 
+import atexit
+import shutil
+
+_created_tmp_dirs = []
+
+def cleanup_tmp_dirs():
+    """Automatically clears all file downloads stored in temp directories after the run."""
+    for d in _created_tmp_dirs:
+        try:
+            if os.path.exists(d):
+                shutil.rmtree(d)
+                logger.info(f"Cleaned up temporary directory: {d}")
+        except Exception as e:
+            logger.error(f"Failed to cleanup temp dir {d}: {e}")
+
+atexit.register(cleanup_tmp_dirs)
 # ─── Tool 1: Scrape Job Description ──────────────────────────────────────────
 
 
@@ -143,6 +159,7 @@ def act_on_ui(action: str, ref: str, text: str = "") -> str:
             
             tmp_dir = os.path.join(tempfile.gettempdir(), f"smartapply_dl_{uuid.uuid4().hex}")
             os.makedirs(tmp_dir, exist_ok=True)
+            _created_tmp_dirs.append(tmp_dir)
             
             logger.info(f"Downloading remote file from {file_path} into {tmp_dir}")
             try:
