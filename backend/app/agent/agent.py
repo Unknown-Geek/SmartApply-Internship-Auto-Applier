@@ -119,16 +119,16 @@ def run_agent(
         try:
             _log("info", f"🤖 Agent run starting (attempt {attempt}/{MAX_RUN_RETRIES})")
 
+            # smolagents ≥1.14: system_prompt → prompt_templates dict
+            # max_steps and verbosity_level moved to agent.run()
             agent = CodeAgent(
                 tools=[scrape_jd, navigate, get_ui_elements, act_on_ui, ctx_search],
                 model=model,
-                max_steps=AGENT_MAX_STEPS,
                 additional_authorized_imports=["json", "re", "time", "os"],
-                system_prompt=system_prompt,
-                verbosity_level=1,
+                prompt_templates={"system_prompt": system_prompt},
             )
 
-            result = agent.run(task)
+            result = agent.run(task, max_steps=AGENT_MAX_STEPS)
             result_str = str(result)
 
             _log("info", f"✅ Agent finished: {result_str[:200]}")

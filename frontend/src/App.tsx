@@ -27,11 +27,17 @@ interface LogEntry {
   step?: number
 }
 
+interface Health {
+  ollama: boolean
+  model: string
+  identity_loaded: boolean
+}
+
 export default function App() {
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null)
   const [tasks, setTasks] = useState<Task[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [health, setHealth] = useState<{ ollama: boolean; model: string; identity_loaded: boolean } | null>(null)
+  const [health, setHealth] = useState<Health | null>(null)
 
   const { logs, status, result, error } = useAgentSocket(activeTaskId)
 
@@ -60,7 +66,7 @@ export default function App() {
         body: JSON.stringify({ job_url: jobUrl }),
       })
       const task: Task = await r.json()
-      setTasks(prev => [task, ...prev])
+      setTasks((prev: Task[]) => [task, ...prev])
       setActiveTaskId(task.task_id)
     } catch (e) {
       console.error('Failed to submit job:', e)
@@ -110,7 +116,7 @@ export default function App() {
         </section>
 
         {/* Identity upload */}
-        <IdentityPanel onIdentityLoaded={() => setHealth(h => h ? {...h, identity_loaded: true} : h)} />
+        <IdentityPanel onIdentityLoaded={() => setHealth((h: Health | null) => h ? {...h, identity_loaded: true} : h)} />
 
         {/* Job input */}
         <JobInput onSubmit={handleApply} isLoading={isSubmitting} />
