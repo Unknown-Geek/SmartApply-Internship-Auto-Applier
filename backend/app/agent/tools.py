@@ -134,6 +134,42 @@ def act_on_ui(action: str, ref: str, text: str = "") -> str:
         result = _pinchtab_call("select", {"ref": ref, "value": text})
     elif action == "upload":
         file_path = text if text else RESUME_PDF_PATH
+        
+        # If it's a URL (like a Google Drive link), download it first
+        if file_path.startswith("http://") or file_path.startswith("https://"):
+            import tempfile
+            import uuid
+            import subprocess
+            
+            tmp_dir = os.path.join(tempfile.gettempdir(), f"smartapply_dl_{uuid.uuid4().hex}")
+            os.makedirs(tmp_dir, exist_ok=True)
+            
+            logger.info(f"Downloading remote file from {file_path} into {tmp_dir}")
+            try:
+                # Use gdown CLI to download. This preserves the Google Drive filename natively.
+                result = subprocess.run(
+                    ["gdown", "--fuzzy", file_path],
+                    cwd=tmp_dir,
+                    capture_output=True,
+                    text=True,
+                    timeout=60
+                )
+                
+                if result.returncode != 0:
+                    error_msg = result.stderr if result.stderr else result.stdout
+                    return f"[ERROR] Failed to download file from {file_path}: {error_msg}"
+                
+                downloaded_files = os.listdir(tmp_dir)
+                if not downloaded_files:
+                    return f"[ERROR] Failed to download file, no file produced by gdown for {file_path}."
+                
+                file_path = os.path.join(tmp_dir, downloaded_files[0])
+                logger.info(f"Successfully downloaded to {file_path}")
+            except FileNotFoundError:
+                return "[ERROR] gdown is not installed or not in PATH."
+            except Exception as e:
+                return f"[ERROR] Downloading failed: {str(e)}"
+
         result = _pinchtab_call("attach", {"ref": ref, "path": file_path})
     else:
         return f"[ERROR] Unknown action: {action}. Use click/fill/select/upload."

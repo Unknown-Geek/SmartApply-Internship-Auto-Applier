@@ -11,6 +11,8 @@ python-dotenv>=1.0.0
 scrapling[all]>=0.2.9
 litellm>=1.40.0
 aiofiles>=23.2.1
+gdown>=5.2.0
+requests>=2.31.0
 
 # Dev / linting (not needed at runtime)
 ruff>=0.5.0
