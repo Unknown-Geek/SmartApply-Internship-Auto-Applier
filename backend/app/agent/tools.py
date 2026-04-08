@@ -32,7 +32,7 @@ def scrape_jd(url: str) -> str:
         A plain-text summary of the job description (title, company, requirements).
     """
     try:
-        from scrapling.defaults import Fetcher
+        from scrapling.defaults import Fetcher  # type: ignore
         fetcher = Fetcher(auto_match=True)
         page = fetcher.get(url, stealthy_headers=True)
         text = page.get_all_text()[:3000]  # Truncate to avoid context flood
