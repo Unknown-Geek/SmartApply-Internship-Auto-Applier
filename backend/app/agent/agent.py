@@ -1,8 +1,3 @@
-"""
-backend/app/agent/agent.py
-smolagents CodeAgent initialization with qwen2.5-coder:7b via Ollama.
-Includes retry logic and structured error recovery.
-"""
 import asyncio
 import logging
 import os
@@ -10,13 +5,34 @@ import time
 from typing import Callable, Optional
 
 import httpx
-from smolagents import CodeAgent, LiteLLMModel
+from langchain_ollama import ChatOllama
+from browser_use import Agent, Browser, BrowserConfig, Controller
 
-from app.agent.prompt import build_prompt
-from app.agent.tools import act_on_ui, ctx_search, get_ui_elements, navigate, scrape_jd
 from app.data.identity import get_identity_text
+import tempfile
+import uuid
+import subprocess
 
 logger = logging.getLogger(__name__)
+
+controller = Controller()
+
+@controller.action('Download a file from a Google Drive URL to the local disk. Returns the absolute file path which you can then use for file inputs.')
+def download_file_from_drive(gdrive_url: str) -> str:
+    tmp_dir = os.path.join(tempfile.gettempdir(), f"smartapply_dl_{uuid.uuid4().hex}")
+    os.makedirs(tmp_dir, exist_ok=True)
+    logger.info(f"Downloading remote file from {gdrive_url} into {tmp_dir}")
+    try:
+        result = subprocess.run(["gdown", "--fuzzy", gdrive_url], cwd=tmp_dir, capture_output=True, text=True, timeout=60)
+        if result.returncode != 0:
+            return f"Failed to download: {result.stderr}"
+        downloaded_files = os.listdir(tmp_dir)
+        if not downloaded_files:
+            return "Failed to download: no file produced."
+        return os.path.join(tmp_dir, downloaded_files[0])
+    except Exception as e:
+        return f"Download failed: {str(e)}"
+
 
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://ollama:11434")
 LLM_MODEL = os.getenv("LLM_MODEL", "qwen2.5-coder:7b")
@@ -30,22 +46,19 @@ MAX_RUN_RETRIES = 2
 RETRY_BACKOFF_SECONDS = 5
 
 
-def _make_model() -> LiteLLMModel:
-    """Create a LiteLLM model pointing to local Ollama."""
-    return LiteLLMModel(
-        model_id=f"ollama/{LLM_MODEL}",
-        api_base=OLLAMA_HOST,
-        num_ctx=LLM_CONTEXT_SIZE,
+def _make_model() -> ChatOllama:
+    """Create a LangChain ChatOllama model pointing to local Ollama."""
+    return ChatOllama(
+        model=LLM_MODEL,
+        base_url=OLLAMA_HOST,
         temperature=LLM_TEMPERATURE,
-        # Structured output for reliable tool calling
-        response_format=None,
+        num_ctx=LLM_CONTEXT_SIZE
     )
 
 
 async def warmup_agent() -> bool:
     """
     Quick connectivity check to verify Ollama is reachable and model is available.
-    Called at startup; non-blocking.
     """
     try:
         async with httpx.AsyncClient() as client:
@@ -70,7 +83,7 @@ def run_agent(
     log_callback: Optional[Callable[[str, str], None]] = None,
 ) -> str:
     """
-    Run the CodeAgent to apply to a job.
+    Run the browser-use Agent to apply to a job.
 
     Retries up to MAX_RUN_RETRIES times on transient errors (network, timeout).
     Raises on permanent errors (bad URL, identity missing, etc.).
@@ -96,17 +109,15 @@ def run_agent(
         identity_text = "No identity data available. Proceed with empty fields."
         _log("error", f"⚠️  Identity load failed: {e} — proceeding without identity")
 
-    system_prompt = build_prompt(identity_text=identity_text, max_steps=AGENT_MAX_STEPS)
-
     task = (
         f"Apply for the job at: {job_url}\n\n"
+        "Here is your applicant identity data. Use this strictly when filling out forms on the application page:\n"
+        f"{identity_text}\n\n"
         "Steps:\n"
-        "1. Call scrape_jd() to understand the role.\n"
-        "2. Call navigate() to open the application URL.\n"
-        "3. Loop: get_ui_elements() → match fields to Identity Data → act_on_ui().\n"
-        "4. If DOM is large, use ctx_search() instead of reading raw output.\n"
-        f"5. Stop when you see a submission confirmation or after {AGENT_MAX_STEPS} steps.\n"
-        "Report SUCCESS or BLOCKED at the end."
+        "1. Open the job application URL.\n"
+        "2. Parse requirements and match available identity data to HTML forms iteratively.\n"
+        "3. Use standard input/click interactions natively to fill details.\n"
+        "4. Stop when you see the final submission confirmation screen and have successfully applied."
     )
 
     last_error = None
@@ -117,28 +128,32 @@ def run_agent(
             time.sleep(delay)
 
         try:
-            _log("info", f"🤖 Agent run starting (attempt {attempt}/{MAX_RUN_RETRIES})")
+            _log("info", f"🤖 Browser-use Agent run starting (attempt {attempt}/{MAX_RUN_RETRIES})")
 
-            # smolagents ≥1.14: system_prompt → prompt_templates dict
-            # max_steps and verbosity_level moved to agent.run()
-            agent = CodeAgent(
-                tools=[scrape_jd, navigate, get_ui_elements, act_on_ui, ctx_search],
-                model=model,
-                additional_authorized_imports=["json", "re", "time", "os"],
-                prompt_templates={"system_prompt": system_prompt},
+            # Setup headless browser natively for the agent inside Docker
+            browser = Browser(config=BrowserConfig(headless=True))
+            agent = Agent(
+                task=task,
+                llm=model,
+                browser=browser,
+                controller=controller
             )
 
-            result = agent.run(task, max_steps=AGENT_MAX_STEPS)
+            # Run event loop to wrap the async browser-use api
+            result = asyncio.run(agent.run(max_steps=AGENT_MAX_STEPS))
             result_str = str(result)
 
             _log("info", f"✅ Agent finished: {result_str[:200]}")
+            
+            # Ensure cleanup
+            asyncio.run(browser.close())
+            
             return result_str
 
         except Exception as e:
             last_error = e
             err_str = str(e)
 
-            # Classify error — permanent errors are not retried
             is_permanent = any(kw in err_str.lower() for kw in [
                 "invalid url", "404", "403", "not found"
             ])
