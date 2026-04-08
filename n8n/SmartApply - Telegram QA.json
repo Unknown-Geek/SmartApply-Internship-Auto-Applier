@@ -1,5 +1,4 @@
 {
-  "name": "SmartApply - Telegram Q&A Handler",
   "nodes": [
     {
       "parameters": {
@@ -7,11 +6,14 @@
         "responseMode": "responseNode",
         "options": {}
       },
-      "id": "webhook-question",
+      "id": "e4cba396-4397-4abc-9e4c-c86c06431a35",
       "name": "Question Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 1.1,
-      "position": [240, 300],
+      "position": [
+        -336,
+        64
+      ],
       "webhookId": "smartapply-question"
     },
     {
@@ -34,43 +36,38 @@
         },
         "options": {}
       },
-      "id": "set-fields",
+      "id": "b6abccb3-1ee0-496d-a499-94028175101f",
       "name": "Extract Fields",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.3,
-      "position": [460, 300]
+      "position": [
+        -112,
+        64
+      ]
     },
     {
       "parameters": {
-        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
+        "chatId": "=1319914424",
         "text": "=🤖 *SmartApply Agent needs your input!*\n\n❓ *Question:*\n{{ $json.question }}\n\n🆔 Task: `{{ $json.task_id }}`\n\n💬 Reply to this message with your answer.\n_Your reply will be sent back to the agent automatically._",
         "additionalFields": {
           "parse_mode": "Markdown"
         }
       },
-      "id": "telegram-ask",
+      "id": "12a4e33c-3f5a-4c22-89e8-f11fc029fdfe",
       "name": "Send Question via Telegram",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
-      "position": [680, 300],
+      "position": [
+        112,
+        64
+      ],
+      "webhookId": "ac86b844-e06b-415e-a8d5-9aa365e3c2e8",
       "credentials": {
         "telegramApi": {
-          "id": "telegram-bot-cred",
-          "name": "SmartApply Telegram Bot"
+          "id": "dJYdBCtto72sPTe9",
+          "name": "Smart Apply Bot"
         }
       }
-    },
-    {
-      "parameters": {
-        "amount": 1,
-        "unit": "minutes"
-      },
-      "id": "wait-node",
-      "name": "Wait for Reply (1 min poll)",
-      "type": "n8n-nodes-base.wait",
-      "typeVersion": 1.1,
-      "position": [900, 300],
-      "webhookId": "smartapply-resume"
     },
     {
       "parameters": {
@@ -78,46 +75,74 @@
         "responseBody": "OK — question sent to Telegram",
         "options": {}
       },
-      "id": "respond-webhook",
+      "id": "5911d087-4697-4fed-b69f-096277bdf128",
       "name": "Acknowledge Webhook",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
-      "position": [900, 480]
+      "position": [
+        336,
+        256
+      ]
+    },
+    {
+      "parameters": {
+        "amount": 1,
+        "unit": "minutes"
+      },
+      "id": "51613a3b-e93a-4652-8e19-1efacc222570",
+      "name": "Wait for Reply (1 min poll)",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        336,
+        64
+      ],
+      "webhookId": "smartapply-resume"
     }
   ],
   "connections": {
     "Question Webhook": {
       "main": [
         [
-          { "node": "Extract Fields", "type": "main", "index": 0 }
+          {
+            "node": "Extract Fields",
+            "type": "main",
+            "index": 0
+          }
         ]
       ]
     },
     "Extract Fields": {
       "main": [
         [
-          { "node": "Send Question via Telegram", "type": "main", "index": 0 },
-          { "node": "Acknowledge Webhook", "type": "main", "index": 0 }
+          {
+            "node": "Send Question via Telegram",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Acknowledge Webhook",
+            "type": "main",
+            "index": 0
+          }
         ]
       ]
     },
     "Send Question via Telegram": {
       "main": [
         [
-          { "node": "Wait for Reply (1 min poll)", "type": "main", "index": 0 }
+          {
+            "node": "Wait for Reply (1 min poll)",
+            "type": "main",
+            "index": 0
+          }
         ]
       ]
     }
   },
-  "active": true,
-  "settings": {
-    "executionOrder": "v1"
-  },
-  "versionId": "1",
+  "pinData": {},
   "meta": {
-    "templateCredsSetupCompleted": true
-  },
-  "tags": [
-    { "createdAt": "2026-04-08T00:00:00.000Z", "updatedAt": "2026-04-08T00:00:00.000Z", "id": "smartapply", "name": "SmartApply" }
-  ]
+    "templateCredsSetupCompleted": true,
+    "instanceId": "19921415bac6b77b91e822c3e97165800ced3a4d6f63d204500fd50a2d359050"
+  }
 }
