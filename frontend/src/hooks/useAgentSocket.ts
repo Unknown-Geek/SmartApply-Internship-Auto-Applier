@@ -53,7 +53,7 @@ export function useAgentSocket(taskId: string | null): AgentSocketState {
           setError(msg.error)
         } else if (msg.message) {
           // Log entry
-          setLogs(prev => [...prev, msg as LogEntry])
+          setLogs((prev: LogEntry[]) => [...prev, msg as LogEntry])
         }
       } catch (e) {
         console.error('WS parse error:', e)
