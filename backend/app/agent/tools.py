@@ -2,9 +2,11 @@
 backend/app/agent/tools.py
 smolagents @tool wrappers for: Scrapling, PinchTab, context-mode, and file upload.
 """
+import atexit
 import json
 import logging
 import os
+import shutil
 import subprocess
 
 import httpx
@@ -15,9 +17,6 @@ logger = logging.getLogger(__name__)
 PINCHTAB_API_URL = os.getenv("PINCHTAB_DAEMON_URL", "http://localhost:9867")
 CONTEXT_MODE_URL = os.getenv("CONTEXT_MODE_URL", "http://context-mode:3100")
 RESUME_PDF_PATH = os.getenv("RESUME_PDF_PATH", "/app/data/identity/resume.pdf")
-
-import atexit
-import shutil
 
 _created_tmp_dirs = []
 
@@ -48,13 +47,14 @@ def scrape_jd(url: str) -> str:
         A plain-text summary of the job description (title, company, requirements).
     """
     try:
-        from scrapegraphai.graphs import SmartScraperGraph
-        import os
         import json
-        
+        import os
+
+        from scrapegraphai.graphs import SmartScraperGraph
+
         OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://ollama:11434")
         LLM_MODEL = os.getenv("LLM_MODEL", "qwen2.5-coder:7b")
-        
+
         graph_config = {
             "llm": {
                 "model": f"ollama/{LLM_MODEL}",
@@ -64,13 +64,13 @@ def scrape_jd(url: str) -> str:
             "verbose": False,
             "headless": True,
         }
-        
+
         smart_scraper = SmartScraperGraph(
             prompt="Extract the job title, company name, and key requirements or responsibilities.",
             source=url,
             config=graph_config
         )
-        
+
         result_dict = smart_scraper.run()
         text = json.dumps(result_dict, indent=2)
 
@@ -171,17 +171,17 @@ def act_on_ui(action: str, ref: str, text: str = "") -> str:
         result = _pinchtab_call("select", {"ref": ref, "value": text})
     elif action == "upload":
         file_path = text if text else RESUME_PDF_PATH
-        
+
         # If it's a URL (like a Google Drive link), download it first
         if file_path.startswith("http://") or file_path.startswith("https://"):
+            import subprocess
             import tempfile
             import uuid
-            import subprocess
-            
+
             tmp_dir = os.path.join(tempfile.gettempdir(), f"smartapply_dl_{uuid.uuid4().hex}")
             os.makedirs(tmp_dir, exist_ok=True)
             _created_tmp_dirs.append(tmp_dir)
-            
+
             logger.info(f"Downloading remote file from {file_path} into {tmp_dir}")
             try:
                 # Use gdown CLI to download. This preserves the Google Drive filename natively.
@@ -192,15 +192,15 @@ def act_on_ui(action: str, ref: str, text: str = "") -> str:
                     text=True,
                     timeout=60
                 )
-                
+
                 if result.returncode != 0:
                     error_msg = result.stderr if result.stderr else result.stdout
                     return f"[ERROR] Failed to download file from {file_path}: {error_msg}"
-                
+
                 downloaded_files = os.listdir(tmp_dir)
                 if not downloaded_files:
                     return f"[ERROR] Failed to download file, no file produced by gdown for {file_path}."
-                
+
                 file_path = os.path.join(tmp_dir, downloaded_files[0])
                 logger.info(f"Successfully downloaded to {file_path}")
             except FileNotFoundError:

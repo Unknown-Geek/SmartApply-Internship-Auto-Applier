@@ -1,18 +1,17 @@
 import asyncio
 import logging
 import os
+import subprocess
+import tempfile
 import threading
 import time
+import uuid
 from typing import Callable, Optional
 
 import httpx
-from langchain_ollama import ChatOllama
-from browser_use import Agent, Browser, BrowserConfig, Controller
+from browser_use import Agent, Browser, Controller, ChatOllama
 
 from app.data.identity import get_identity_text
-import tempfile
-import uuid
-import subprocess
 
 logger = logging.getLogger(__name__)
 
@@ -77,9 +76,11 @@ def _make_model() -> ChatOllama:
     """Create a LangChain ChatOllama model pointing to local Ollama."""
     return ChatOllama(
         model=LLM_MODEL,
-        base_url=OLLAMA_HOST,
-        temperature=LLM_TEMPERATURE,
-        num_ctx=LLM_CONTEXT_SIZE
+        host=OLLAMA_HOST,
+        ollama_options={
+            "temperature": LLM_TEMPERATURE,
+            "num_ctx": LLM_CONTEXT_SIZE
+        }
     )
 
 
@@ -174,7 +175,7 @@ def run_agent(
             _log("info", f"🤖 Browser-use Agent run starting (attempt {attempt}/{MAX_RUN_RETRIES})")
 
             # Setup headless browser natively for the agent inside Docker
-            browser = Browser(config=BrowserConfig(headless=True))
+            browser = Browser(headless=True)
             agent = Agent(
                 task=task,
                 llm=model,
@@ -187,10 +188,13 @@ def run_agent(
             result_str = str(result)
 
             _log("info", f"✅ Agent finished: {result_str[:200]}")
-            
+
             # Ensure cleanup
-            asyncio.run(browser.close())
-            
+            if hasattr(browser, "stop"):
+                asyncio.run(browser.stop())
+            elif hasattr(browser, "close"):
+                asyncio.run(browser.close())
+
             return result_str
 
         except Exception as e:

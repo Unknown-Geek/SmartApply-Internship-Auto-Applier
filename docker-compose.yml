@@ -19,7 +19,7 @@ services:
       - smart-apply-net
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      test: ["CMD", "ollama", "list"]
       interval: 30s
       timeout: 10s
       retries: 10
@@ -39,7 +39,7 @@ services:
       - smart-apply-net
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3100/health"]
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3100/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -73,6 +73,8 @@ services:
       - AGENT_TIMEOUT_SECONDS=${AGENT_TIMEOUT_SECONDS:-300}
       - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
       - CHROME_NO_SANDBOX=true
+      - N8N_LOG_WEBHOOK_URL=${N8N_LOG_WEBHOOK_URL}
+      - N8N_QUESTION_WEBHOOK_URL=${N8N_QUESTION_WEBHOOK_URL}
     networks:
       - smart-apply-net
     restart: unless-stopped
