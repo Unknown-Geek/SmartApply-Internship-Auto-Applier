@@ -48,10 +48,31 @@ def scrape_jd(url: str) -> str:
         A plain-text summary of the job description (title, company, requirements).
     """
     try:
-        from scrapling.defaults import Fetcher  # type: ignore
-        fetcher = Fetcher(auto_match=True)
-        page = fetcher.get(url, stealthy_headers=True)
-        text = page.get_all_text()[:3000]  # Truncate to avoid context flood
+        from scrapegraphai.graphs import SmartScraperGraph
+        import os
+        import json
+        
+        OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://ollama:11434")
+        LLM_MODEL = os.getenv("LLM_MODEL", "qwen2.5-coder:7b")
+        
+        graph_config = {
+            "llm": {
+                "model": f"ollama/{LLM_MODEL}",
+                "temperature": 0.1,
+                "base_url": OLLAMA_HOST,
+            },
+            "verbose": False,
+            "headless": True,
+        }
+        
+        smart_scraper = SmartScraperGraph(
+            prompt="Extract the job title, company name, and key requirements or responsibilities.",
+            source=url,
+            config=graph_config
+        )
+        
+        result_dict = smart_scraper.run()
+        text = json.dumps(result_dict, indent=2)
 
         # Index into context-mode for later ctx_search queries
         try:
@@ -63,7 +84,7 @@ def scrape_jd(url: str) -> str:
         except Exception:
             pass  # context-mode indexing is best-effort
 
-        return f"[JD Scraped] {len(text)} chars from {url}\n\n{text[:1500]}..."
+        return f"[JD Scraped] Extracted elements from {url}\n\n{text}"
     except Exception as e:
         logger.error(f"scrape_jd failed: {e}")
         return f"[ERROR] Could not scrape job description: {e}"

@@ -100,6 +100,22 @@ services:
       - smart-apply-net
     restart: unless-stopped
 
+  # ─── 5. Skyvern — Enterprise Fallback Engine ─────────────────────────────────
+  skyvern:
+    image: skyvern/skyvern:latest
+    container_name: smart-apply-skyvern
+    ports:
+      - "8080:8080"
+    environment:
+      - LLM_KEY=ollama
+      - OLLAMA_HOST=http://ollama:11434
+    networks:
+      - smart-apply-net
+    restart: unless-stopped
+    depends_on:
+      ollama:
+        condition: service_healthy
+
 volumes:
   ollama_data:    # ~4.1 GB — model weights for qwen2.5-coder:7b
   app_data:       # User identity CSV, resume PDF, session logs
