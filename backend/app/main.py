@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.agent.agent import warmup_agent
 from app.api import health, identity, jobs, ws
+from app.core.auth import ApiKeyMiddleware
 from app.data.identity import load_identity
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s — %(message)s")
@@ -54,6 +55,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ─── API Key Auth ─────────────────────────────────────────────────────────────
+# If API_KEYS env var is set, all requests (except /api/health) require a key.
+# Add middleware AFTER CORS so preflight requests still work.
+app.add_middleware(ApiKeyMiddleware)
 
 # ─── Routers ───────────────────────────────────────────────────────────────────
 app.include_router(health.router, prefix="/api")

@@ -4,6 +4,41 @@
 
 ---
 
+## Session 4 — 2026-04-12
+
+### ✅ Completed
+- [x] **LLM upgrade: qwen2.5-coder:7b → qwen3:8b (32K context)**
+  - Updated all defaults, env vars, docker-compose, Makefile, entrypoint.sh
+  - 4x larger context window eliminates need for compact identity text truncation
+- [x] **Docker build config validated & cleaned**
+  - Removed `smolagents` from requirements.txt (legacy, unused)
+  - Removed `ruff` from production requirements (dev-only)
+  - Updated stale "smolagents" references in comments → "browser-use"
+- [x] **Job queue with concurrency limiting**
+  - `Semaphore`-based queue in `jobs.py` — `MAX_CONCURRENT_AGENTS` env var (default 1)
+  - Prevents ARM64 OOM from multiple simultaneous LLM sessions
+  - `GET /api/jobs/queue/status` — queue position, active count, max concurrency
+  - Queue position tracked per task, visible in API responses
+- [x] **API key authentication layer**
+  - `ApiKeyMiddleware` in `core/auth.py` — validates key from query param, `X-API-Key` header, or `Bearer` token
+  - `API_KEYS` env var (comma-separated) — empty = auth disabled
+  - `/api/health` is public; all other endpoints require auth when configured
+  - WebSocket connections bypass middleware (upgrade requests)
+- [x] **Live performance metric in frontend**
+  - `useAgentSocket` hook now computes `stepsPerMinute` from step timestamps
+  - Header shows model parameter count + quantization from `/api/health` model_info
+  - Terminal header shows `~N steps/min` badge during active agent runs
+  - New `GET /api/health/ollama/stats` endpoint — VRAM usage, running models, model details
+
+### 📋 To Do (Session 5+)
+- [ ] Integration test — apply to a public sample form (e.g. Breezy HR test job)
+- [ ] Ink CLI (`npm create ink-app`) for terminal mode
+- [ ] Scrapling anti-bot fine-tuning (LinkedIn specific)
+- [ ] PinchTab multi-tab support for parallel applications
+- [ ] n8n Queue Application → auto-trigger `POST /api/jobs/apply` (close the loop)
+
+---
+
 ## Session 3 — 2026-04-07
 
 ### ✅ Completed
@@ -24,15 +59,11 @@
   - `api/jobs.py`: added `_notify_n8n_logger()` — fire-and-forget POST to Application Logger webhook on every agent run (success + failure); opt-in via `N8N_LOG_WEBHOOK_URL`
   - `.env.example`: documented `N8N_LOG_WEBHOOK_URL` + `N8N_BACKEND_HOST`
 
-### 📋 To Do (Session 4+)
-- [ ] Validate Docker build end-to-end (`docker compose build`)
+### 📋 To Do (Session 5+)
 - [ ] Integration test — apply to a public sample form (e.g. Breezy HR test job)
 - [ ] Ink CLI (`npm create ink-app`) for terminal mode
-- [ ] Auth layer (API key) for multi-user
-- [ ] Rate limiting / job queue (Redis + Celery or FastAPI BackgroundTasks queue)
 - [ ] Scrapling anti-bot fine-tuning (LinkedIn specific)
 - [ ] PinchTab multi-tab support for parallel applications
-- [ ] Frontend: show live tok/s performance metric from Ollama `/api/generate` stream
 - [ ] n8n Queue Application → auto-trigger `POST /api/jobs/apply` (close the loop)
 
 ---

@@ -1,5 +1,5 @@
 # backend/Dockerfile
-# ARM64-compatible FastAPI backend with smolagents, PinchTab, Scrapling, Supervisor
+# ARM64-compatible FastAPI backend with browser-use, PinchTab, Scrapling, Supervisor
 
 FROM python:3.11-slim-bookworm
 

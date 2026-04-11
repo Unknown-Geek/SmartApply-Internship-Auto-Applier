@@ -34,6 +34,13 @@ interface Health {
   identity_loaded: boolean
   ollama?: { ok: boolean; detail?: string }
   context_mode?: { ok: boolean; detail?: string }
+  model_info?: {
+    name: string
+    size_gb?: number
+    param_count?: string
+    quantization?: string
+    format?: string
+  }
 }
 
 export default function App() {
@@ -44,7 +51,7 @@ export default function App() {
   const [humanAnswer, setHumanAnswer] = useState('')
   const [isSendingAnswer, setIsSendingAnswer] = useState(false)
 
-  const { logs, status, result, error, question } = useAgentSocket(activeTaskId)
+  const { logs, status, result, error, question, stepsPerMinute } = useAgentSocket(activeTaskId)
 
   // Health check on mount
   useEffect(() => {
@@ -118,6 +125,11 @@ export default function App() {
               <span className="model-dot" />
               {health?.model || 'qwen3:8b'}
             </span>
+            {health?.model_info?.param_count && (
+              <span className="model-badge" style={{ opacity: 0.7, fontSize: '0.7rem' }}>
+                {health.model_info.param_count} · {health.model_info.quantization}
+              </span>
+            )}
             {health && <HealthBar health={health} />}
           </div>
         </div>
@@ -148,6 +160,11 @@ export default function App() {
           <section className="terminal-section">
             <div className="terminal-header">
               <span className="terminal-title">🤖 Agent Loop</span>
+              {stepsPerMinute !== null && status === 'running' && (
+                <span className="model-badge" style={{ opacity: 0.8, fontSize: '0.75rem' }}>
+                  ~{stepsPerMinute} steps/min
+                </span>
+              )}
               <StatusBadge status={status} />
             </div>
             <AgentTerminal

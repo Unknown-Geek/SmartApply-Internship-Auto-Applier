@@ -5,6 +5,7 @@ REST endpoints for job application task management.
 import asyncio
 import json
 import os
+import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
@@ -19,8 +20,16 @@ from app.models.schemas import AnswerRequest, ApplyRequest, LogEntry, TaskRespon
 
 router = APIRouter()
 
-# Thread pool for blocking agent runs (smolagents is synchronous)
-_executor = ThreadPoolExecutor(max_workers=2)
+# ─── Job Queue ────────────────────────────────────────────────────────────────
+# ARM64 VM with 4 cores can only run 1 LLM session at a time (qwen3:8b uses ~4.9 GB).
+MAX_CONCURRENT_AGENTS = int(os.getenv("MAX_CONCURRENT_AGENTS", "1"))
+_agent_semaphore = threading.Semaphore(MAX_CONCURRENT_AGENTS)
+_queue_lock = threading.Lock()
+_queue_position: Dict[str, int] = {}   # task_id → position in queue (0 = running)
+_active_count = 0
+
+# Thread pool for blocking agent runs
+_executor = ThreadPoolExecutor(max_workers=max(MAX_CONCURRENT_AGENTS + 2, 3))
 
 # In-memory task store — keyed by task_id
 _tasks: Dict[str, dict] = {}
@@ -120,60 +129,83 @@ def _append_log(task_id: str, level: str, message: str, step: int = None):
 
 def _run_agent_task(task_id: str, job_url: str):
     """Blocking function run in thread pool: runs the agent and updates task state."""
-    _tasks[task_id]["status"] = TaskStatus.RUNNING.value
-    _append_log(task_id, "info", f"🤖 Agent started for: {job_url}")
+    global _active_count
 
-    step_counter = [0]
-
-    def log_callback(level: str, message: str):
-        step_counter[0] += 1
-        _append_log(task_id, level, message, step=step_counter[0])
-
-    def user_input_fn(question: str) -> str:
-        """Called by the agent when it needs a human answer. Blocks until answered."""
-        _tasks[task_id]["status"] = TaskStatus.WAITING.value
-        _tasks[task_id]["question"] = question
-        _tasks[task_id]["updated_at"] = datetime.utcnow().isoformat()
+    # Wait for a slot in the concurrency semaphore
+    acquired = _agent_semaphore.acquire(blocking=True, timeout=float(os.getenv("AGENT_TIMEOUT_SECONDS", "300")) * 3)
+    if not acquired:
+        _tasks[task_id]["status"] = TaskStatus.FAILED.value
+        _tasks[task_id]["error"] = "Timed out waiting in job queue"
+        _append_log(task_id, "error", "❌ Timed out waiting for a slot in the job queue")
         _persist_task(task_id)
-        _append_log(task_id, "info", f"⏸️  Agent waiting for human input: {question}")
+        with _queue_lock:
+            _queue_position.pop(task_id, None)
+        return
 
-        # Notify n8n → Telegram
-        if N8N_QUESTION_WEBHOOK_URL:
-            try:
-                httpx.post(
-                    N8N_QUESTION_WEBHOOK_URL,
-                    json={"task_id": task_id, "question": question},
-                    timeout=10,
-                )
-            except Exception as exc:
-                import logging as _log
-                _log.getLogger(__name__).warning(f"n8n question webhook failed: {exc}")
-
-        # Block here until the operator answers via /api/jobs/{task_id}/answer
-        answer = human_input.request_input(task_id, question)
-
-        # Resume
-        _tasks[task_id]["status"] = TaskStatus.RUNNING.value
-        _tasks[task_id]["question"] = None
-        _tasks[task_id]["updated_at"] = datetime.utcnow().isoformat()
-        _persist_task(task_id)
-        _append_log(task_id, "info", f"▶️  Resuming — operator answered: {answer[:80]}")
-        return answer
+    with _queue_lock:
+        _active_count += 1
+        _queue_position[task_id] = 0  # 0 means running (not queued)
 
     try:
-        result = run_agent(job_url=job_url, log_callback=log_callback, user_input_fn=user_input_fn)
-        _tasks[task_id]["status"] = TaskStatus.COMPLETED.value
-        _tasks[task_id]["result"] = str(result)
-        _append_log(task_id, "info", f"✅ Application completed: {result}")
-        _notify_n8n_logger(job_url=job_url, status="success", result=str(result))
-    except Exception as e:
-        _tasks[task_id]["status"] = TaskStatus.FAILED.value
-        _tasks[task_id]["error"] = str(e)
-        _append_log(task_id, "error", f"❌ Agent failed: {e}")
-        _notify_n8n_logger(job_url=job_url, status="failed", result=str(e))
+        _tasks[task_id]["status"] = TaskStatus.RUNNING.value
+        _append_log(task_id, "info", f"🤖 Agent started for: {job_url}")
+
+        step_counter = [0]
+
+        def log_callback(level: str, message: str):
+            step_counter[0] += 1
+            _append_log(task_id, level, message, step=step_counter[0])
+
+        def user_input_fn(question: str) -> str:
+            """Called by the agent when it needs a human answer. Blocks until answered."""
+            _tasks[task_id]["status"] = TaskStatus.WAITING.value
+            _tasks[task_id]["question"] = question
+            _tasks[task_id]["updated_at"] = datetime.utcnow().isoformat()
+            _persist_task(task_id)
+            _append_log(task_id, "info", f"⏸️  Agent waiting for human input: {question}")
+
+            # Notify n8n → Telegram
+            if N8N_QUESTION_WEBHOOK_URL:
+                try:
+                    httpx.post(
+                        N8N_QUESTION_WEBHOOK_URL,
+                        json={"task_id": task_id, "question": question},
+                        timeout=10,
+                    )
+                except Exception as exc:
+                    import logging as _log
+                    _log.getLogger(__name__).warning(f"n8n question webhook failed: {exc}")
+
+            # Block here until the operator answers via /api/jobs/{task_id}/answer
+            answer = human_input.request_input(task_id, question)
+
+            # Resume
+            _tasks[task_id]["status"] = TaskStatus.RUNNING.value
+            _tasks[task_id]["question"] = None
+            _tasks[task_id]["updated_at"] = datetime.utcnow().isoformat()
+            _persist_task(task_id)
+            _append_log(task_id, "info", f"▶️  Resuming — operator answered: {answer[:80]}")
+            return answer
+
+        try:
+            result = run_agent(job_url=job_url, log_callback=log_callback, user_input_fn=user_input_fn)
+            _tasks[task_id]["status"] = TaskStatus.COMPLETED.value
+            _tasks[task_id]["result"] = str(result)
+            _append_log(task_id, "info", f"✅ Application completed: {result}")
+            _notify_n8n_logger(job_url=job_url, status="success", result=str(result))
+        except Exception as e:
+            _tasks[task_id]["status"] = TaskStatus.FAILED.value
+            _tasks[task_id]["error"] = str(e)
+            _append_log(task_id, "error", f"❌ Agent failed: {e}")
+            _notify_n8n_logger(job_url=job_url, status="failed", result=str(e))
+
     finally:
         _tasks[task_id]["updated_at"] = datetime.utcnow().isoformat()
         _persist_task(task_id)
+        _agent_semaphore.release()
+        with _queue_lock:
+            _active_count -= 1
+            _queue_position.pop(task_id, None)
 
 
 # ─── Routes ───────────────────────────────────────────────────────────────────
@@ -183,9 +215,13 @@ async def apply_for_job(request: ApplyRequest):
     """
     Submit a job URL for autonomous application.
     Returns a task_id immediately; monitor via GET /api/jobs/{task_id} or WS.
+    If the agent is busy, the job is queued and will start when a slot opens.
     """
     task_id = str(uuid.uuid4())
     now = datetime.utcnow().isoformat()
+
+    with _queue_lock:
+        queue_pos = _active_count + len([p for p in _queue_position.values() if p > 0])
 
     _tasks[task_id] = {
         "task_id": task_id,
@@ -196,8 +232,12 @@ async def apply_for_job(request: ApplyRequest):
         "logs": [],
         "result": None,
         "error": None,
+        "queue_position": queue_pos,
     }
     _persist_task(task_id)
+
+    with _queue_lock:
+        _queue_position[task_id] = queue_pos if queue_pos > 0 else 1
 
     # Submit to thread pool — agent is blocking; this keeps FastAPI responsive
     loop = asyncio.get_event_loop()
@@ -257,6 +297,22 @@ async def list_tasks():
     return [_task_to_response(t) for t in sorted(
         _tasks.values(), key=lambda x: x.get("created_at", ""), reverse=True
     )]
+
+
+@router.get("/queue/status")
+async def queue_status():
+    """Current job queue status: active runs, queued jobs, and max concurrency."""
+    with _queue_lock:
+        queued = {tid: pos for tid, pos in _queue_position.items() if pos > 0}
+    return {
+        "max_concurrent": MAX_CONCURRENT_AGENTS,
+        "active": _active_count,
+        "queued": len(queued),
+        "queue": [
+            {"task_id": tid, "position": pos}
+            for tid, pos in sorted(queued.items(), key=lambda x: x[1])
+        ],
+    }
 
 
 def _task_to_response(task: dict) -> TaskResponse:

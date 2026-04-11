@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     api_host: str = "0.0.0.0"
     api_port: int = 8000
 
+    # Auth
+    api_keys: str = ""  # Comma-separated API keys; empty = no auth
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

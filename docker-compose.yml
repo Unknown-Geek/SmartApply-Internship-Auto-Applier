@@ -44,7 +44,7 @@ services:
       timeout: 5s
       retries: 5
 
-  # ─── 3. Backend — FastAPI + smolagents + PinchTab + Scrapling ────────────────
+  # ─── 3. Backend — FastAPI + browser-use + PinchTab + Scrapling ────────────────
   backend:
     build:
       context: ./backend
@@ -72,6 +72,8 @@ services:
       - AGENT_MAX_STEPS=${AGENT_MAX_STEPS:-20}
       - AGENT_TIMEOUT_SECONDS=${AGENT_TIMEOUT_SECONDS:-300}
       - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
+      - API_KEYS=${API_KEYS:-}
+      - MAX_CONCURRENT_AGENTS=${MAX_CONCURRENT_AGENTS:-1}
       - CHROME_NO_SANDBOX=true
       - N8N_LOG_WEBHOOK_URL=${N8N_LOG_WEBHOOK_URL}
       - N8N_QUESTION_WEBHOOK_URL=${N8N_QUESTION_WEBHOOK_URL}

@@ -13,6 +13,7 @@ interface AgentSocketState {
   result: string | null
   error: string | null
   question: string | null
+  stepsPerMinute: number | null
 }
 
 const WS_URL = import.meta.env.VITE_WS_URL || ''
@@ -23,7 +24,9 @@ export function useAgentSocket(taskId: string | null): AgentSocketState {
   const [result, setResult] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [question, setQuestion] = useState<string | null>(null)
+  const [stepsPerMinute, setStepsPerMinute] = useState<number | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
+  const startTimeRef = useRef<number | null>(null)
 
   useEffect(() => {
     if (!taskId) return
@@ -34,6 +37,8 @@ export function useAgentSocket(taskId: string | null): AgentSocketState {
     setResult(null)
     setError(null)
     setQuestion(null)
+    setStepsPerMinute(null)
+    startTimeRef.current = null
 
     // Close any existing connection
     wsRef.current?.close()
@@ -57,7 +62,14 @@ export function useAgentSocket(taskId: string | null): AgentSocketState {
         } else if (msg.error) {
           setError(msg.error)
         } else if (msg.message) {
-          // Log entry
+          // Log entry — track steps/min
+          if (msg.step) {
+            if (!startTimeRef.current) startTimeRef.current = Date.now()
+            const elapsed = (Date.now() - startTimeRef.current) / 60000 // minutes
+            if (elapsed > 0.05) { // wait at least 3 seconds before computing
+              setStepsPerMinute(Math.round(msg.step / elapsed))
+            }
+          }
           setLogs((prev: LogEntry[]) => [...prev, msg as LogEntry])
         }
       } catch (e) {
@@ -73,5 +85,5 @@ export function useAgentSocket(taskId: string | null): AgentSocketState {
     }
   }, [taskId])
 
-  return { logs, status, result, error, question }
+  return { logs, status, result, error, question, stepsPerMinute }
 }
