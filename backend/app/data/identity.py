@@ -44,10 +44,56 @@ def get_identity() -> dict:
     return _identity
 
 
-def get_identity_text() -> str:
-    """Return identity as a formatted string for injection into LLM prompt."""
+# Fields most commonly needed on job applications — used to trim the prompt
+_CORE_FIELDS = {
+    "full_name", "first_name", "last_name", "name",
+    "email", "personal email", "college email",
+    "phone", "mobile number", "mobile",
+    "linkedin", "linkedin url", "github", "github url",
+    "portfolio", "portfolio url",
+    "address", "permanent address", "current city", "city",
+    "university", "degree", "major", "cgpa", "current cgpa",
+    "graduation year", "year of graduation", "month of graduation",
+    "date of birth", "gender", "nationality",
+    "languages known", "languages",
+    "work mode preference", "willing to relocate", "notice period",
+    "expected stipend", "expected salary",
+}
+
+
+def get_identity_text(compact: bool = True) -> str:
+    """
+    Return identity as a formatted string for injection into LLM prompt.
+
+    When compact=True (default), only core job-application fields are included
+    to avoid overflowing the 8K context window on ARM. The full identity is
+    still available via get_identity() for specific field lookups.
+    """
     identity = get_identity()
-    lines = [f"  {k}: {v}" for k, v in identity.items()]
+
+    if not compact:
+        lines = [f"  {k}: {v}" for k, v in identity.items()]
+        return "Applicant Identity Data:\n" + "\n".join(lines)
+
+    # Core fields — always include
+    core = {}
+    extra = {}
+    for k, v in identity.items():
+        key_lower = k.lower().strip()
+        if key_lower in _CORE_FIELDS or any(f in key_lower for f in _CORE_FIELDS):
+            core[k] = v
+        else:
+            extra[k] = v
+
+    lines = [f"  {k}: {v}" for k, v in core.items()]
+
+    # Add a summary line for extra fields so the agent knows they exist
+    if extra:
+        extra_keys = ", ".join(list(extra.keys())[:15])
+        if len(extra) > 15:
+            extra_keys += f" (+{len(extra) - 15} more)"
+        lines.append(f"  [Additional fields available: {extra_keys}]")
+
     return "Applicant Identity Data:\n" + "\n".join(lines)
 
 

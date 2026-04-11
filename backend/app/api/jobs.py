@@ -13,8 +13,8 @@ from typing import Dict
 import httpx
 from fastapi import APIRouter, BackgroundTasks, File, HTTPException, UploadFile
 
-from app.agent.agent import run_agent
 from app.agent import human_input
+from app.agent.agent import run_agent
 from app.models.schemas import AnswerRequest, ApplyRequest, LogEntry, TaskResponse, TaskStatus
 
 router = APIRouter()

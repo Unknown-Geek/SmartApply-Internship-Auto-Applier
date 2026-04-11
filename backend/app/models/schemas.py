@@ -42,9 +42,16 @@ class TaskResponse(BaseModel):
     question: Optional[str] = None  # set when status == WAITING
 
 
+class ServiceStatusSchema(BaseModel):
+    ok: bool
+    detail: Optional[str] = None
+
+
 class HealthResponse(BaseModel):
     status: str
-    ollama: bool
     model: str
     identity_loaded: bool
+    ollama: ServiceStatusSchema
+    context_mode: ServiceStatusSchema
+    pinchtab: ServiceStatusSchema
     version: str = "1.0.0"

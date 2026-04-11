@@ -58,7 +58,7 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - app_data:/app/data
+      - ./data:/app/data
       - chrome_data:/app/.chrome_data
       - ./backend/app:/app/app  # Dev: live code reload
     environment:
@@ -97,30 +97,13 @@ services:
     depends_on:
       - backend
     ports:
-      - "3000:80"
+      - "3005:80"
     networks:
       - smart-apply-net
     restart: unless-stopped
-
-  # ─── 5. Skyvern — Enterprise Fallback Engine ─────────────────────────────────
-  skyvern:
-    image: skyvern/skyvern:latest
-    container_name: smart-apply-skyvern
-    ports:
-      - "8080:8080"
-    environment:
-      - LLM_KEY=ollama
-      - OLLAMA_HOST=http://ollama:11434
-    networks:
-      - smart-apply-net
-    restart: unless-stopped
-    depends_on:
-      ollama:
-        condition: service_healthy
 
 volumes:
   ollama_data:    # ~4.1 GB — model weights for qwen2.5-coder:7b
-  app_data:       # User identity CSV, resume PDF, session logs
   context_data:   # SQLite FTS5 database for context-mode
   chrome_data:    # Chromium browser profile for PinchTab
 

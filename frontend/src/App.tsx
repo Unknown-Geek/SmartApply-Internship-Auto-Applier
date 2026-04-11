@@ -18,6 +18,7 @@ interface Task {
   logs: LogEntry[]
   result?: string
   error?: string
+  question?: string
 }
 
 interface LogEntry {
@@ -28,9 +29,11 @@ interface LogEntry {
 }
 
 interface Health {
-  ollama: boolean
+  status?: string
   model: string
   identity_loaded: boolean
+  ollama?: { ok: boolean; detail?: string }
+  context_mode?: { ok: boolean; detail?: string }
 }
 
 export default function App() {
@@ -38,8 +41,10 @@ export default function App() {
   const [tasks, setTasks] = useState<Task[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [health, setHealth] = useState<Health | null>(null)
+  const [humanAnswer, setHumanAnswer] = useState('')
+  const [isSendingAnswer, setIsSendingAnswer] = useState(false)
 
-  const { logs, status, result, error } = useAgentSocket(activeTaskId)
+  const { logs, status, result, error, question } = useAgentSocket(activeTaskId)
 
   // Health check on mount
   useEffect(() => {
@@ -72,6 +77,23 @@ export default function App() {
       console.error('Failed to submit job:', e)
     } finally {
       setIsSubmitting(false)
+    }
+  }
+
+  const handleSendAnswer = async () => {
+    if (!activeTaskId || !humanAnswer.trim()) return
+    setIsSendingAnswer(true)
+    try {
+      await fetch(`${API_URL}/api/jobs/${activeTaskId}/answer`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ answer: humanAnswer.trim() }),
+      })
+      setHumanAnswer('')
+    } catch (e) {
+      console.error('Failed to send answer:', e)
+    } finally {
+      setIsSendingAnswer(false)
     }
   }
 
@@ -134,6 +156,37 @@ export default function App() {
               error={error}
               status={status}
             />
+
+            {/* Human input panel when agent is waiting */}
+            {status === 'waiting' && question && (
+              <div className="human-input-panel">
+                <div className="human-input-question">
+                  <span className="human-input-icon">?</span>
+                  <span>{question}</span>
+                </div>
+                <div className="human-input-row">
+                  <input
+                    type="text"
+                    className="human-input-field"
+                    placeholder="Type your answer..."
+                    value={humanAnswer}
+                    onChange={(e) => setHumanAnswer(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && humanAnswer.trim()) handleSendAnswer()
+                    }}
+                    disabled={isSendingAnswer}
+                    autoFocus
+                  />
+                  <button
+                    className="human-input-send"
+                    onClick={handleSendAnswer}
+                    disabled={isSendingAnswer || !humanAnswer.trim()}
+                  >
+                    {isSendingAnswer ? 'Sending...' : 'Send'}
+                  </button>
+                </div>
+              </div>
+            )}
           </section>
         )}
 

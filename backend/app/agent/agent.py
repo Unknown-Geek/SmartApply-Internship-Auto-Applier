@@ -76,11 +76,10 @@ def _make_model() -> ChatOllama:
     """Create a LangChain ChatOllama model pointing to local Ollama."""
     return ChatOllama(
         model=LLM_MODEL,
-        host=OLLAMA_HOST,
-        ollama_options={
-            "temperature": LLM_TEMPERATURE,
-            "num_ctx": LLM_CONTEXT_SIZE
-        }
+        base_url=OLLAMA_HOST,
+        temperature=LLM_TEMPERATURE,
+        num_ctx=LLM_CONTEXT_SIZE,
+        timeout=180,  # 3 min — ARM inference is slow, 75s default is too short
     )
 
 
@@ -143,13 +142,14 @@ def run_agent(
 
     task = (
         f"Apply for the job at: {job_url}\n\n"
-        "Here is your applicant identity data. Use this strictly when filling out forms on the application page:\n"
+        "Here is the applicant's identity data. Use it to fill form fields:\n"
         f"{identity_text}\n\n"
-        "Steps:\n"
-        "1. Open the job application URL.\n"
-        "2. Parse requirements and match available identity data to HTML forms iteratively.\n"
-        "3. Use standard input/click interactions natively to fill details.\n"
-        "4. Stop when you see the final submission confirmation screen and have successfully applied."
+        "Instructions:\n"
+        "1. Go to the job application URL.\n"
+        "2. Read the page, find form fields, and fill them using the identity data above.\n"
+        "3. For fields not in the identity data, use ask_user() to ask the human.\n"
+        "4. Click Next/Continue to advance through multi-step forms.\n"
+        "5. Stop when you see a submission confirmation message."
     )
 
     if "myworkdayjobs.com" in job_url.lower():
@@ -174,26 +174,37 @@ def run_agent(
         try:
             _log("info", f"🤖 Browser-use Agent run starting (attempt {attempt}/{MAX_RUN_RETRIES})")
 
-            # Setup headless browser natively for the agent inside Docker
-            browser = Browser(headless=True)
-            agent = Agent(
-                task=task,
-                llm=model,
-                browser=browser,
-                controller=controller
-            )
+            # Create a new event loop for this thread (ThreadPoolExecutor has no loop)
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                # Setup headless browser natively for the agent inside Docker
+                browser = Browser(headless=True)
+                agent = Agent(
+                    task=task,
+                    llm=model,
+                    browser=browser,
+                    controller=controller,
+                    max_actions_per_step=3,
+                )
 
-            # Run event loop to wrap the async browser-use api
-            result = asyncio.run(agent.run(max_steps=AGENT_MAX_STEPS))
-            result_str = str(result)
+                # Run the async browser-use agent
+                result = loop.run_until_complete(agent.run(max_steps=AGENT_MAX_STEPS))
+                result_str = str(result)
 
-            _log("info", f"✅ Agent finished: {result_str[:200]}")
+                _log("info", f"✅ Agent finished: {result_str[:200]}")
 
-            # Ensure cleanup
-            if hasattr(browser, "stop"):
-                asyncio.run(browser.stop())
-            elif hasattr(browser, "close"):
-                asyncio.run(browser.close())
+                # Ensure cleanup
+                if hasattr(browser, "stop"):
+                    loop.run_until_complete(browser.stop())
+                elif hasattr(browser, "close"):
+                    loop.run_until_complete(browser.close())
+            finally:
+                loop.close()
+
+            # Check if agent actually succeeded
+            if "timed out" in result_str.lower() and "is_done=False" in result_str:
+                raise RuntimeError(f"Agent could not complete: all steps timed out")
 
             return result_str
 
@@ -212,18 +223,7 @@ def run_agent(
             _log("error", f"⚠️  Transient error (attempt {attempt}): {e}")
 
             if attempt == MAX_RUN_RETRIES:
-                _log("warning", "🚨 Browser-use exhausted. Offloading to Skyvern Fallback Engine.")
-                try:
-                    # Invoke Skyvern as a last resort via its API
-                    skyvern_payload = {
-                        "url": job_url,
-                        "task": task,
-                    }
-                    resp = httpx.post("http://skyvern:8080/api/v1/workflow", json=skyvern_payload, timeout=20)
-                    resp.raise_for_status()
-                    return f"[SKYVERN FALLBACK] Task delegated to Skyvern: {resp.json()}"
-                except Exception as sky_e:
-                    _log("error", f"Skyvern fallback also failed: {sky_e}")
+                _log("warning", "🚨 Browser-use agent exhausted all retries.")
                 break
 
     raise RuntimeError(

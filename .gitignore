@@ -44,3 +44,4 @@ ollama_data/
 
 # n8n workflows (contains credentials)
 n8n/
+backend/app/signature.txt

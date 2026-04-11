@@ -5,15 +5,17 @@ interface ServiceStatus {
   detail?: string
 }
 
+interface HealthData {
+  status?: string
+  model: string
+  identity_loaded: boolean
+  ollama?: boolean | ServiceStatus
+  context_mode?: ServiceStatus
+  pinchtab?: ServiceStatus
+}
+
 interface Props {
-  health: {
-    ollama?: boolean | ServiceStatus
-    model: string
-    identity_loaded: boolean
-    context_mode?: ServiceStatus
-    pinchtab?: ServiceStatus
-    status?: string
-  }
+  health: HealthData
 }
 
 function isOk(v: boolean | ServiceStatus | undefined): boolean {

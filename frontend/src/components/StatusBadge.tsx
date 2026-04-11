@@ -7,6 +7,7 @@ interface Props {
 const STATUS_CONFIG: Record<string, { label: string; color: string; dot: string }> = {
   pending:   { label: 'Pending',   color: '#a0aec0', dot: '#4a5568' },
   running:   { label: 'Running',   color: '#63b3ed', dot: '#63b3ed' },
+  waiting:   { label: 'Waiting',   color: '#f6e05e', dot: '#f6e05e' },
   completed: { label: 'Completed', color: '#68d391', dot: '#68d391' },
   failed:    { label: 'Failed',    color: '#fc8181', dot: '#fc8181' },
 }

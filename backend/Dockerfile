@@ -12,10 +12,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     supervisor \
     # Xvfb — virtual framebuffer for headless Chromium
     xvfb \
-    # Chromium for PinchTab (ARM64 native in Debian bookworm)
+    # Chromium for browser-use / PinchTab (ARM64 native in Debian bookworm)
     chromium \
     chromium-driver \
-    # Scrapling / Playwright stealth deps
+    # Playwright / Scrapling stealth deps
     libnss3 \
     libnspr4 \
     libatk1.0-0 \
@@ -41,13 +41,16 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# ─── Install Playwright browsers for browser-use ────────────────────────────
+RUN playwright install chromium 2>/dev/null || true
+
 # ─── Install Scrapling browser fingerprints ───────────────────────────────────
 RUN scrapling install 2>/dev/null || true
 
 # ─── Install PinchTab (ARM64 linux supported natively) ────────────────────────
 RUN curl -fsSL https://pinchtab.com/install.sh | bash 2>/dev/null \
     && (cp ~/.local/bin/pinchtab /usr/local/bin/pinchtab 2>/dev/null || true) \
-    && pinchtab --version 2>/dev/null || echo "⚠️  PinchTab install skipped"
+    && pinchtab --version 2>/dev/null || echo "PinchTab install skipped"
 
 # ─── Copy app source ─────────────────────────────────────────────────────────
 COPY app/ /app/app/

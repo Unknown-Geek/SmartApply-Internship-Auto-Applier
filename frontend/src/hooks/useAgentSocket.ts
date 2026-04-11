@@ -12,6 +12,7 @@ interface AgentSocketState {
   status: string
   result: string | null
   error: string | null
+  question: string | null
 }
 
 const WS_URL = import.meta.env.VITE_WS_URL || ''
@@ -21,6 +22,7 @@ export function useAgentSocket(taskId: string | null): AgentSocketState {
   const [status, setStatus] = useState('pending')
   const [result, setResult] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [question, setQuestion] = useState<string | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
 
   useEffect(() => {
@@ -31,6 +33,7 @@ export function useAgentSocket(taskId: string | null): AgentSocketState {
     setStatus('pending')
     setResult(null)
     setError(null)
+    setQuestion(null)
 
     // Close any existing connection
     wsRef.current?.close()
@@ -45,6 +48,8 @@ export function useAgentSocket(taskId: string | null): AgentSocketState {
 
         if (msg.type === 'status') {
           setStatus(msg.status)
+          setQuestion(msg.question ?? null)
+          if (msg.status !== 'waiting') setQuestion(null)
         } else if (msg.type === 'done') {
           setStatus(msg.result ? 'completed' : 'failed')
           if (msg.result) setResult(msg.result)
@@ -68,5 +73,5 @@ export function useAgentSocket(taskId: string | null): AgentSocketState {
     }
   }, [taskId])
 
-  return { logs, status, result, error }
+  return { logs, status, result, error, question }
 }

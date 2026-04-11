@@ -6,7 +6,7 @@ import httpx
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from app.data.identity import _identity
+from app.data import identity
 
 router = APIRouter()
 
@@ -82,7 +82,7 @@ async def health_check():
     return HealthResponse(
         status=status,
         model=LLM_MODEL,
-        identity_loaded=_identity is not None,
+        identity_loaded=identity._identity is not None,
         ollama=ServiceStatus(ok=ollama_ok, detail=ollama_detail),
         context_mode=ServiceStatus(ok=ctx_ok, detail=ctx_detail),
         pinchtab=ServiceStatus(ok=pinch_ok, detail=pinch_detail),
