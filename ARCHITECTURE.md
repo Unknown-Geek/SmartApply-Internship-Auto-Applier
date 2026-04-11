@@ -164,6 +164,9 @@ backend/
 │   │   ├── human_input.py # Thread-safe pause/resume for human Q&A
 │   │   ├── tools.py      # Legacy smolagents tools (unused by browser-use)
 │   │   └── prompt.py     # Legacy system prompt (unused by browser-use)
+│   ├── core/
+│   │   ├── config.py     # Pydantic Settings (env vars)
+│   │   └── auth.py       # API key authentication middleware
 │   ├── models/
 │   │   └── schemas.py    # Pydantic schemas
 │   └── data/
@@ -180,8 +183,10 @@ backend/
 | `GET` | `/api/jobs/{task_id}` | Get task status + partial logs |
 | `POST` | `/api/jobs/{task_id}/answer` | Provide human answer when agent is waiting |
 | `GET` | `/api/jobs/waiting` | List tasks waiting for human input |
+| `GET` | `/api/jobs/queue/status` | Queue position, active count, max concurrency |
 | `WS` | `/ws/agent/{task_id}` | Live stream of agent thoughts & actions |
-| `GET` | `/api/health` | Deep health check (Ollama, context-mode, PinchTab) |
+| `GET` | `/api/health` | Deep health check (Ollama, context-mode, PinchTab, model info) |
+| `GET` | `/api/ollama/stats` | Live Ollama stats — VRAM, running models, model details |
 
 ### Phase 3: browser-use Agent
 
@@ -256,6 +261,19 @@ frontend/
 - `num_ctx=32768` in Ollama (full qwen3 context window)
 - `timeout=180` on ChatOllama (3 min — ARM inference is slow)
 - If model is slow, drop to `qwen3:4b` (faster, 32K context, less capable)
+
+### Job Queue & Concurrency
+- Semaphore-based queue limits concurrent agent runs (`MAX_CONCURRENT_AGENTS=1` by default)
+- ARM64 VM with 4.9 GB model can only handle 1 LLM session at a time
+- Jobs exceeding the limit are queued and start when a slot opens
+- Queue status visible via `GET /api/jobs/queue/status`
+- Frontend shows `~N steps/min` during active agent runs
+
+### API Key Authentication
+- `API_KEYS` env var (comma-separated) — leave empty to disable auth
+- Supports query param (`?api_key=KEY`), `X-API-Key` header, or `Authorization: Bearer KEY`
+- Health endpoint (`/api/health`) is always public
+- WebSocket connections bypass the middleware
 
 ### ARM-Specific Optimizations
 - Ollama `OLLAMA_NUM_PARALLEL=1` (avoid OOM with 4 cores)
