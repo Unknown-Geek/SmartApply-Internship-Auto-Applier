@@ -9,7 +9,7 @@ import uuid
 from typing import Callable, Optional
 
 import httpx
-from browser_use import Agent, Browser, Controller, ChatOllama
+from browser_use import Agent, Browser, ChatOllama, Controller
 
 from app.data.identity import get_identity_text
 
@@ -204,7 +204,7 @@ def run_agent(
 
             # Check if agent actually succeeded
             if "timed out" in result_str.lower() and "is_done=False" in result_str:
-                raise RuntimeError(f"Agent could not complete: all steps timed out")
+                raise RuntimeError("Agent could not complete: all steps timed out")
 
             return result_str
 
