@@ -7,8 +7,8 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     # Ollama / LLM
     ollama_host: str = "http://ollama:11434"
-    llm_model: str = "qwen2.5-coder:7b"
-    llm_context_size: int = 8192
+    llm_model: str = "qwen3:8b"
+    llm_context_size: int = 32768
     llm_temperature: float = 0.1
 
     # Context Mode

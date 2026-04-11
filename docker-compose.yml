@@ -1,7 +1,7 @@
 version: "3.9"
 
 services:
-  # ─── 1. Ollama — Local LLM inference (qwen2.5-coder:7b) ─────────────────────
+  # ─── 1. Ollama — Local LLM inference (qwen3:8b) ─────────────────────
   ollama:
     image: ollama/ollama:latest
     container_name: smart-apply-ollama
@@ -63,8 +63,8 @@ services:
       - ./backend/app:/app/app  # Dev: live code reload
     environment:
       - OLLAMA_HOST=http://ollama:11434
-      - LLM_MODEL=${LLM_MODEL:-qwen2.5-coder:7b}
-      - LLM_CONTEXT_SIZE=${LLM_CONTEXT_SIZE:-8192}
+      - LLM_MODEL=${LLM_MODEL:-qwen3:8b}
+      - LLM_CONTEXT_SIZE=${LLM_CONTEXT_SIZE:-32768}
       - LLM_TEMPERATURE=${LLM_TEMPERATURE:-0.1}
       - CONTEXT_MODE_URL=http://context-mode:3100
       - IDENTITY_CSV_PATH=${IDENTITY_CSV_PATH:-/app/data/identity/identity.csv}
@@ -103,7 +103,7 @@ services:
     restart: unless-stopped
 
 volumes:
-  ollama_data:    # ~4.1 GB — model weights for qwen2.5-coder:7b
+  ollama_data:    # ~4.9 GB — model weights for qwen3:8b
   context_data:   # SQLite FTS5 database for context-mode
   chrome_data:    # Chromium browser profile for PinchTab
 

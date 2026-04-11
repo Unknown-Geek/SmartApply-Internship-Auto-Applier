@@ -61,8 +61,8 @@ def download_file_from_drive(gdrive_url: str) -> str:
 
 
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://ollama:11434")
-LLM_MODEL = os.getenv("LLM_MODEL", "qwen2.5-coder:7b")
-LLM_CONTEXT_SIZE = int(os.getenv("LLM_CONTEXT_SIZE", "8192"))
+LLM_MODEL = os.getenv("LLM_MODEL", "qwen3:8b")
+LLM_CONTEXT_SIZE = int(os.getenv("LLM_CONTEXT_SIZE", "32768"))
 LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.1"))
 AGENT_MAX_STEPS = int(os.getenv("AGENT_MAX_STEPS", "20"))
 AGENT_TIMEOUT = int(os.getenv("AGENT_TIMEOUT_SECONDS", "300"))

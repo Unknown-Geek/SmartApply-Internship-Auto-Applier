@@ -45,8 +45,8 @@ services:
       - chrome_data:/app/.chrome_data
     environment:
       - OLLAMA_HOST=http://ollama:11434
-      - LLM_MODEL=${LLM_MODEL:-qwen2.5-coder:7b}
-      - LLM_CONTEXT_SIZE=${LLM_CONTEXT_SIZE:-8192}
+      - LLM_MODEL=${LLM_MODEL:-qwen3:8b}
+      - LLM_CONTEXT_SIZE=${LLM_CONTEXT_SIZE:-32768}
       - CONTEXT_MODE_URL=http://context-mode:3100
       - IDENTITY_CSV_PATH=/app/data/identity/identity.csv
       - RESUME_PDF_PATH=/app/data/identity/resume.pdf

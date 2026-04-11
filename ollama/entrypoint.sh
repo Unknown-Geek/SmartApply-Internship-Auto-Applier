@@ -1,11 +1,11 @@
 #!/bin/bash
 # ollama/entrypoint.sh
-# Starts Ollama server and auto-pulls qwen2.5-coder:7b (Q4_K_M) on first boot.
-# Model is ~4.1 GB — only downloaded once, cached in ollama_data volume.
+# Starts Ollama server and auto-pulls qwen3:8b on first boot.
+# Model is ~4.9 GB — only downloaded once, cached in ollama_data volume.
 
 set -e
 
-MODEL="${LLM_MODEL:-qwen2.5-coder:7b}"
+MODEL="${LLM_MODEL:-qwen3:8b}"
 
 echo "🚀 [Ollama] Starting Ollama server..."
 ollama serve &
@@ -23,7 +23,7 @@ echo "✅ [Ollama] API is ready."
 if ollama list | grep -q "${MODEL}"; then
   echo "✅ [Ollama] Model '${MODEL}' already installed — skipping pull."
 else
-  echo "📥 [Ollama] Pulling model '${MODEL}' (first-time setup, ~4.1 GB)..."
+  echo "📥 [Ollama] Pulling model '${MODEL}' (first-time setup, ~4.9 GB)..."
   ollama pull "${MODEL}"
   echo "✅ [Ollama] Model '${MODEL}' pulled successfully."
 fi

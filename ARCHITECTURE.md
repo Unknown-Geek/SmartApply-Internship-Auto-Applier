@@ -4,7 +4,7 @@
 
 ---
 
-## 🔬 Model Selection (via llmfit)
+## 🔬 Model Selection
 
 Hardware profile of the target VM (Oracle Cloud / ARM Neoverse-N1):
 
@@ -17,27 +17,27 @@ Hardware profile of the target VM (Oracle Cloud / ARM Neoverse-N1):
 | Backend         | CPU (ARM)                    |
 | OS              | Ubuntu 22.04 (aarch64)       |
 
-**llmfit** was used to evaluate hundreds of models against this hardware profile. For a **coding + agentic** use case on CPU-only ARM:
+**Chosen: `qwen3:8b` (via Ollama)**
 
-| Rank | Model                         | Score | Est. TPS | RAM Req | Fit      | Quant  |
-|------|-------------------------------|-------|----------|---------|----------|--------|
-| 🥇 1 | **qwen2.5-coder:7b** (Q4_K_M) | 76.2  | ~9.5     | ~9.0 GB | Marginal | Q4_K_M |
-| 2    | qwen2.5-coder:3b (Q4_K_M)    | 73.1  | ~23.3    | ~3.9 GB | Marginal | Q4_K_M |
-| 3    | starcoder2-7b (Q4_K_M)       | 76.0  | ~10.0    | ~8.5 GB | Marginal | Q8_0   |
+Why qwen3:8b over the previous qwen2.5-coder:7b:
 
-**Chosen: `qwen2.5-coder:7b` (Q4_K_M via Ollama)**
-- Best quality/speed tradeoff for coding agents on CPU-only ARM
-- 9.5 tok/s: acceptable for agentic loops (not interactive chat)
-- 9 GB footprint leaves ~4.6 GB for the rest of the stack
-- Confirmed via llmfit's multi-dimensional scoring (Quality=83, Fit=100, Context=100)
+| Aspect | qwen2.5-coder:7b | qwen3:8b |
+|--------|-------------------|----------|
+| Context window | 8K | 32K |
+| Specialization | Code generation | Instruction following + tool calling |
+| Size (Q4) | ~4.1 GB | ~4.9 GB |
+| Agentic capability | Moderate | Strong (built-in thinking mode) |
+| Identity prompt | Must compact to core fields | Full profile fits easily |
+
+- 32K context eliminates the need for compact identity text and avoids context overflow
+- Built-in thinking mode (`/think`) improves form-filling accuracy on complex multi-step applications
+- Slightly larger footprint (~4.9 GB vs ~4.1 GB) but still within the RAM envelope
 
 > **llmfit** can be re-run anytime: `docker run ghcr.io/alexsjones/llmfit recommend --use-case coding --json`
 
 ---
 
-## 🏛️ 1. High-Level Architecture (Text-Driven Agentic DOM)
-
-We bypass the slower Vision-Language Model (VLM) approach in favor of a lightning-fast, code-generating LLM pipeline.
+## 🏛️ 1. High-Level Architecture (Agentic Browser Automation)
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -46,13 +46,13 @@ We bypass the slower Vision-Language Model (VLM) approach in favor of a lightnin
 │  ┌──────────┐    ┌──────────────┐    ┌──────────────────┐  │
 │  │  Ollama  │◄───│   Backend    │    │    Frontend      │  │
 │  │  :11434  │    │  (FastAPI)   │    │  (React/Vite)    │  │
-│  │          │    │   :8000      │    │    :3000         │  │
+│  │          │    │   :8000      │    │    :3005         │  │
 │  └──────────┘    └──────┬───────┘    └──────────────────┘  │
 │        │                │                      │            │
-│  qwen2.5-coder:7b  ┌────▼──────┐     WebSocket logs        │
-│  (Q4_K_M, pulled   │ smolagents│                           │
-│   on first boot)   │ CodeAgent │                           │
-│                    └────┬──────┘                           │
+│   qwen3:8b     ┌────────▼──────┐     WebSocket logs        │
+│  (auto-pulled  │ browser-use   │                           │
+│   on first     │ Agent+Browser │                           │
+│   boot)        └────┬──────────┘                           │
 │                ┌────────┴─────────┐                        │
 │                │                  │                        │
 │         ┌──────▼───┐    ┌─────────▼────┐                  │
@@ -66,13 +66,13 @@ We bypass the slower Vision-Language Model (VLM) approach in favor of a lightnin
 
 | Component | Role | Tech |
 |-----------|------|------|
-| **Orchestrator** | Manages See-Think-Act loop | smolagents CodeAgent |
-| **Brain** | Writes & runs Python to fill forms | qwen2.5-coder:7b via Ollama |
+| **Orchestrator** | Manages See-Think-Act loop | browser-use Agent |
+| **Brain** | Reads pages, decides actions, fills forms | qwen3:8b via Ollama |
 | **Context Engine** | Indexes DOM, answers semantic queries | context-mode (SQLite FTS5) |
 | **Recon (Eyes)** | Scrapes job descriptions, bypasses anti-bot | Scrapling |
-| **Hands** | Headless Chrome, token-efficient refs | PinchTab |
+| **Hands** | Headless Chrome, token-efficient refs | PinchTab / Playwright |
 | **Bridge** | Session management, WebSocket streaming | FastAPI + Uvicorn |
-| **Interface** | React dashboard + CLI via Ink | React, Ink |
+| **Interface** | React dashboard with live agent view | React + Vite |
 
 ---
 
@@ -80,11 +80,11 @@ We bypass the slower Vision-Language Model (VLM) approach in favor of a lightnin
 
 | Layer | Technology |
 |-------|-----------|
-| Backend | Python 3.11, FastAPI, Uvicorn, smolagents |
-| Local AI | Ollama, qwen2.5-coder:7b (Q4_K_M) |
-| Browser/Scraping | PinchTab (Golang binary), Scrapling |
-| Optimization | context-mode (Node.js/TypeScript, SQLite FTS5) |
-| Frontend | React 18, Vite, TailwindCSS, Ink (CLI) |
+| Backend | Python 3.11, FastAPI, Uvicorn, browser-use |
+| Local AI | Ollama, qwen3:8b (32K context) |
+| Browser/Scraping | browser-use (Playwright), PinchTab, Scrapling |
+| Optimization | context-mode (Node.js, SQLite FTS5) |
+| Frontend | React 18, Vite, TypeScript |
 | Containerization | Docker Compose v2 |
 | Process Manager | Supervisor (inside backend container) |
 
@@ -103,28 +103,28 @@ git clone https://github.com/youruser/smart-apply.git && cd smart-apply && docke
 ```yaml
 # docker-compose.yml overview
 services:
-  ollama:          # Pulls qwen2.5-coder:7b on first boot
-  backend:         # FastAPI + smolagents + PinchTab + Scrapling
-  context-mode:    # MCP context indexing server (Node.js)
+  ollama:          # Pulls qwen3:8b on first boot
+  backend:         # FastAPI + browser-use + PinchTab + Scrapling
+  context-mode:    # Context indexing server (Node.js)
   frontend:        # React/Vite dashboard
 ```
 
 ### Model Auto-Pull on Start
 The Ollama container uses an entrypoint script that auto-pulls the model:
 ```bash
-ollama pull qwen2.5-coder:7b  # ~4.1 GB download on first run
+ollama pull qwen3:8b  # ~4.9 GB download on first run
 ```
 
 ### Volume Persistence
 ```
-ollama_data    → /root/.ollama      (model weights, ~4.1 GB)
-app_data       → /app/data          (identity CSV, session logs)
+ollama_data    → /root/.ollama      (model weights, ~4.9 GB)
+./data         → /app/data          (identity CSV, session logs)
 chrome_data    → /app/.chrome_data  (browser profile)
 ```
 
 ---
 
-## 🗺️ 4. Detailed Implementation Plan
+## 🗺️ 4. Detailed Implementation
 
 ### Phase 1: Infrastructure & MCP Layer Setup
 
@@ -141,7 +141,7 @@ chrome_data    → /app/.chrome_data  (browser profile)
 
 **context-mode Setup:**
 - Runs as a dedicated lightweight Node.js container
-- Exposes MCP tools over stdio / local socket
+- Exposes HTTP API for indexing and searching
 - SQLite FTS5 database persisted in a volume
 
 **Scrapling Setup:**
@@ -155,16 +155,19 @@ backend/
 ├── app/
 │   ├── main.py           # FastAPI entrypoint, lifespan, CORS
 │   ├── api/
-│   │   ├── jobs.py       # POST /api/jobs/apply, GET /api/jobs/{id}
+│   │   ├── jobs.py       # POST /api/jobs/apply, GET /api/jobs/{id}, POST /{id}/answer
+│   │   ├── health.py     # GET /api/health — deep service check
+│   │   ├── identity.py   # Identity CSV upload, profile ingest from n8n
 │   │   └── ws.py         # WS /ws/agent/{task_id}
 │   ├── agent/
-│   │   ├── tools.py      # scrape_jd, navigate, get_ui_elements, act_on_ui
-│   │   ├── agent.py      # smolagents CodeAgent initialization
-│   │   └── prompt.py     # System prompt / Prime Directive
+│   │   ├── agent.py      # browser-use Agent orchestration
+│   │   ├── human_input.py # Thread-safe pause/resume for human Q&A
+│   │   ├── tools.py      # Legacy smolagents tools (unused by browser-use)
+│   │   └── prompt.py     # Legacy system prompt (unused by browser-use)
 │   ├── models/
 │   │   └── schemas.py    # Pydantic schemas
 │   └── data/
-│       └── identity.py   # CSV loader (pandas)
+│       └── identity.py   # CSV loader, JSON profile ingest, compact text
 ├── requirements.txt
 └── Dockerfile
 ```
@@ -175,47 +178,56 @@ backend/
 |--------|----------|-------------|
 | `POST` | `/api/jobs/apply` | Submit job URL, spawn background agent task |
 | `GET` | `/api/jobs/{task_id}` | Get task status + partial logs |
+| `POST` | `/api/jobs/{task_id}/answer` | Provide human answer when agent is waiting |
+| `GET` | `/api/jobs/waiting` | List tasks waiting for human input |
 | `WS` | `/ws/agent/{task_id}` | Live stream of agent thoughts & actions |
-| `GET` | `/api/health` | Health check |
+| `GET` | `/api/health` | Deep health check (Ollama, context-mode, PinchTab) |
 
-### Phase 3: smolagents Loop
+### Phase 3: browser-use Agent
 
 ```python
-from smolagents import CodeAgent, LiteLLMModel
+from browser_use import Agent, Browser, ChatOllama, Controller
 
-# Point to containerized Ollama
-model = LiteLLMModel(
-    model_id="ollama/qwen2.5-coder:7b",
-    api_base="http://ollama:11434",
-    num_ctx=8192,            # Balanced — llmfit recommends ≤8192 for this RAM
-    temperature=0.1,         # Low temp for deterministic form-filling
+model = ChatOllama(
+    model="qwen3:8b",
+    base_url="http://ollama:11434",
+    temperature=0.1,
+    num_ctx=32768,           # Full 32K context — fits identity + DOM
+    timeout=180,             # 3 min — ARM inference is slow
 )
 
-agent = CodeAgent(
-    tools=[scrape_jd, navigate, get_ui_elements, act_on_ui, ctx_search],
-    model=model,
-    max_steps=20,            # Hard cap — prevents infinite loops on broken forms
-    additional_authorized_imports=["json", "re", "time"],
+browser = Browser(headless=True)
+agent = Agent(
+    task=task,
+    llm=model,
+    browser=browser,
+    controller=controller,   # Registers ask_user(), download_file_from_drive()
+    max_actions_per_step=3,
 )
+result = loop.run_until_complete(agent.run(max_steps=20))
 ```
 
-**System Prompt (Prime Directive):**
-> "You are an autonomous job application agent. You have the applicant's Identity Data (name, email, phone, resume path, skills). Steps: (1) scrape_jd(url) to understand the role. (2) navigate(url) to open the application. (3) Loop: get_ui_elements() → match fields to Identity Data → act_on_ui() to fill/click. (4) If DOM output is large, use ctx_search(query) instead of reading raw. (5) Stop at Submit confirmation. Never loop more than 20 steps."
+**Task Prompt:**
+> "Apply for the job at: {url}. Here is the applicant's identity data. Use it to fill form fields. Instructions: 1. Go to the job application URL. 2. Read the page, find form fields, and fill them using the identity data. 3. For fields not in the identity data, use ask_user() to ask the human. 4. Click Next/Continue to advance through multi-step forms. 5. Stop when you see a submission confirmation message."
 
 ### Phase 4: Frontend
 
 ```
 frontend/
 ├── src/
-│   ├── App.tsx
+│   ├── App.tsx               # Main app + human-input panel
 │   ├── components/
 │   │   ├── JobInput.tsx       # URL input + submit button
 │   │   ├── AgentTerminal.tsx  # Live WebSocket log viewer
-│   │   ├── StatusBadge.tsx    # Running / Completed / Failed
-│   │   └── IdentityCard.tsx   # Shows loaded applicant info
-│   └── hooks/
-│       └── useAgentSocket.ts  # WebSocket hook
+│   │   ├── StatusBadge.tsx    # Pending/Running/Waiting/Completed/Failed
+│   │   ├── HealthBar.tsx      # Service status dots
+│   │   ├── IdentityPanel.tsx  # Upload CSV/resume, show loaded fields
+│   │   └── TaskHistory.tsx    # Past task list
+│   ├── hooks/
+│   │   └── useAgentSocket.ts  # WebSocket hook (logs, status, question)
+│   └── App.css                # Layout + animations
 ├── package.json
+├── nginx.conf                 # Proxies /api/ and /ws/ to backend
 └── Dockerfile
 ```
 
@@ -223,25 +235,34 @@ frontend/
 
 ## ⚠️ 5. Key Considerations & Optimization
 
-### Context Management (Critical)
-- `get_ui_elements()` can return 50 KB+ for complex Workday forms
-- **Fix**: Pipe output through `context-mode`'s `ctx_batch_execute` → agent gets ≤300 bytes summary
-- llmfit recommends capping context at 8192 tokens on this ARM VM to avoid OOM
+### Context Management
+- qwen3:8b supports 32K context — full identity profile + page DOM fits without truncation
+- Legacy compact mode still available via `get_identity_text(compact=True)` for smaller models
+- `get_ui_elements()` can return 50 KB+ for complex Workday forms — pipe through context-mode
+
+### Human-in-the-Loop
+- Agent calls `ask_user(question)` when it encounters fields not in identity data
+- Blocks agent thread via `threading.Event` until operator answers
+- Frontend shows question + answer input when status is `waiting`
+- Optional n8n → Telegram relay for mobile notifications
 
 ### File Upload Handling
 - `<input type="file">` bypasses OS picker via PinchTab's file attachment API
-- Resume PDF path injected via `APPLICANT_RESUME_PATH` env var
+- Resume PDF path injected via `RESUME_PDF_PATH` env var
+- Google Drive URLs auto-downloaded via `gdown` CLI
 
 ### Token & Step Limits
-- `max_steps=20` hard cap in smolagents
-- `num_ctx=8192` in Ollama (llmfit-validated for 9 GB RAM envelope)
-- If model is slow, drop to `qwen2.5-coder:3b` (23 tok/s, 3.9 GB RAM)
+- `max_steps=20` hard cap in browser-use Agent
+- `num_ctx=32768` in Ollama (full qwen3 context window)
+- `timeout=180` on ChatOllama (3 min — ARM inference is slow)
+- If model is slow, drop to `qwen3:4b` (faster, 32K context, less capable)
 
 ### ARM-Specific Optimizations
 - Ollama `OLLAMA_NUM_PARALLEL=1` (avoid OOM with 4 cores)
 - `OLLAMA_NUM_THREAD=4` (use all ARM cores)
 - PinchTab runs headless Chromium in `--no-sandbox` (container-safe)
-- Q4_K_M quantization (best quality/speed on ARM without GPU)
+- Q4 quantization (best quality/speed on ARM without GPU)
+- `asyncio.new_event_loop()` in ThreadPoolExecutor (not `asyncio.run()` — crashes in threads)
 
 ### Anti-Bot Bypass
 - Scrapling handles Cloudflare-protected job boards (LinkedIn etc.)
@@ -262,17 +283,17 @@ docker compose up -d
 docker logs -f smart-apply-ollama-1
 
 # Open dashboard
-open http://localhost:3000
+open http://localhost:3005
 ```
 
 **Services after `docker compose up -d`:**
 
 | Service | URL | Description |
 |---------|-----|-------------|
-| Frontend | http://localhost:3000 | React dashboard |
+| Frontend | http://localhost:3005 | React dashboard |
 | Backend API | http://localhost:8000 | FastAPI + Swagger docs |
 | Ollama | http://localhost:11434 | LLM inference API |
-| context-mode | (internal) | MCP context server |
+| context-mode | (internal) | Context indexing server |
 
 ---
 
@@ -283,6 +304,7 @@ smart-apply/
 ├── docker-compose.yml          ← Single-command launch
 ├── .env.example               ← Config template
 ├── ARCHITECTURE.md            ← This file
+├── PROJECT_CONTEXT.md          ← Quick-reference context doc
 ├── PROGRESS.md                ← Build progress log
 │
 ├── backend/
@@ -299,13 +321,16 @@ smart-apply/
 ├── frontend/
 │   ├── Dockerfile
 │   ├── package.json
+│   ├── nginx.conf
 │   └── src/
 │
 ├── context-mode/
-│   └── Dockerfile              ← Node.js context MCP server
+│   └── Dockerfile              ← Node.js context indexing server
 │
 ├── ollama/
-│   └── entrypoint.sh          ← Auto-pulls qwen2.5-coder:7b
+│   └── entrypoint.sh          ← Auto-pulls qwen3:8b
+│
+├── n8n/                        ← n8n workflow JSONs
 │
 └── data/
     └── identity/              ← Mounted volume for user CSV/resume
@@ -322,4 +347,4 @@ smart-apply/
 
 ---
 
-*Last updated: 2026-04-07 | Model selected via llmfit v0.9.2 on Oracle Cloud ARM VM*
+*Last updated: 2026-04-12 | Model: qwen3:8b (32K context) on Oracle Cloud ARM VM*

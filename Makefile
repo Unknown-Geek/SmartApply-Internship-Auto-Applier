@@ -29,7 +29,7 @@ logs-ollama: ## Follow Ollama (model pull progress)
 
 ## ── Model ─────────────────────────────────────────────────────────────────────
 pull-model: ## Manually trigger model pull inside Ollama container
-	docker exec smart-apply-ollama ollama pull qwen2.5-coder:7b
+	docker exec smart-apply-ollama ollama pull qwen3:8b
 
 list-models: ## List models installed in Ollama
 	docker exec smart-apply-ollama ollama list

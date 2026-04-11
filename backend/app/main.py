@@ -41,7 +41,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Smart Apply API",
-    description="Autonomous job application agent powered by qwen2.5-coder:7b",
+    description="Autonomous job application agent powered by qwen3:8b",
     version="1.0.0",
     lifespan=lifespan,
 )

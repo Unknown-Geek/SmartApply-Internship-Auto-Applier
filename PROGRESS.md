@@ -73,7 +73,7 @@
 
 ### ✅ Completed
 - [x] Hardware analysis via **llmfit v0.9.2** — ARM Neoverse-N1, 4c/24GB, no GPU
-  - Best model: `qwen2.5-coder:7b` (Q4_K_M), score 76.2, ~9.5 tok/s, 9 GB RAM
+  - Best model: `qwen3:8b` (32K context, ~4.9 GB Q4, strong instruction following)
 - [x] Updated `ARCHITECTURE.md` with llmfit analysis + Docker Compose plan
 - [x] Full project scaffold — 30+ files across all 4 services
 

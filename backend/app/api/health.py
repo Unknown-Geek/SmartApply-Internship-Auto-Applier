@@ -11,7 +11,7 @@ from app.data import identity
 router = APIRouter()
 
 OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://ollama:11434")
-LLM_MODEL = os.getenv("LLM_MODEL", "qwen2.5-coder:7b")
+LLM_MODEL = os.getenv("LLM_MODEL", "qwen3:8b")
 CONTEXT_MODE_URL = os.getenv("CONTEXT_MODE_URL", "http://context-mode:3100")
 
 

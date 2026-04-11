@@ -53,7 +53,7 @@ def scrape_jd(url: str) -> str:
         from scrapegraphai.graphs import SmartScraperGraph
 
         OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://ollama:11434")
-        LLM_MODEL = os.getenv("LLM_MODEL", "qwen2.5-coder:7b")
+        LLM_MODEL = os.getenv("LLM_MODEL", "qwen3:8b")
 
         graph_config = {
             "llm": {

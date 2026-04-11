@@ -116,7 +116,7 @@ export default function App() {
           <div className="header-meta">
             <span className="model-badge">
               <span className="model-dot" />
-              qwen2.5-coder:7b
+              {health?.model || 'qwen3:8b'}
             </span>
             {health && <HealthBar health={health} />}
           </div>
@@ -201,7 +201,7 @@ export default function App() {
       </main>
 
       <footer className="footer">
-        <span>Smart Apply · Powered by <code>qwen2.5-coder:7b</code> via Ollama · 100% local</span>
+        <span>Smart Apply · Powered by <code>{health?.model || 'qwen3:8b'}</code> via Ollama · 100% local</span>
       </footer>
     </div>
   )

@@ -37,7 +37,7 @@ All services run in Docker on an ARM64 (Oracle Ampere) VM. The LLM runs 100% loc
 
 | Service | Image/Build | Port | Purpose |
 |---------|-------------|------|---------|
-| **ollama** | `ollama/ollama:latest` | 11434 | Local LLM inference. Auto-pulls `qwen2.5-coder:7b` (~4.1 GB) on first boot |
+| **ollama** | `ollama/ollama:latest` | 11434 | Local LLM inference. Auto-pulls `qwen3:8b` (~4.9 GB) on first boot |
 | **context-mode** | `./context-mode` | 3100 | SQLite FTS5 index for DOM/JD text. Node.js + `better-sqlite3` |
 | **backend** | `./backend` | 8000 | FastAPI app. Runs the browser-use agent in a thread pool |
 | **frontend** | `./frontend` | 3005→80 | React SPA served by nginx. Proxies `/api/` and `/ws/` to backend |
@@ -163,7 +163,7 @@ The `data/` directory is bind-mounted into the backend container (`./data:/app/d
 ## Key Design Decisions & Gotchas
 
 1. **browser-use, not smolagents**: The project originally used `smolagents` CodeAgent with custom tools (`tools.py`, `prompt.py`). It now uses `browser-use`'s `Agent` which has its own browser automation. The old smolagents tools are still in the codebase but unused.
-2. **ARM64 inference is slow**: `timeout=180` on ChatOllama (default 75s is too short). Compact identity text to fit 8K context.
+2. **ARM64 inference is slow**: `timeout=180` on ChatOllama (default 75s is too short). qwen3:8b with 32K context avoids the need for compact identity text.
 3. **Event loop in threads**: `asyncio.run()` crashes inside `ThreadPoolExecutor`. Must use `asyncio.new_event_loop()` + `loop.run_until_complete()`.
 4. **Thread-local for user_input_fn**: The `ask_user()` controller action uses `threading.local()` to access the per-task callback without a global.
 5. **PinchTab is optional**: The supervisord config allows PinchTab to fail (exitcodes 0,1,2). If PinchTab is down, the agent still works via browser-use's native Playwright.
@@ -179,7 +179,7 @@ See `.env.example` for the full list. Key ones:
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `OLLAMA_HOST` | `http://ollama:11434` | Ollama API URL |
-| `LLM_MODEL` | `qwen2.5-coder:7b` | Model name |
+| `LLM_MODEL` | `qwen3:8b` | Model name |
 | `LLM_CONTEXT_SIZE` | `8192` | Context window |
 | `AGENT_MAX_STEPS` | `20` | Max browser-use steps |
 | `N8N_LOG_WEBHOOK_URL` | (empty) | Webhook for application logging |
@@ -209,7 +209,8 @@ Four parallel jobs on push/PR to main:
 
 - Fixed `ChatOllama` constructor (`base_url` instead of `host`, `timeout=180`)
 - Fixed `asyncio.run()` crash in ThreadPoolExecutor
-- Added compact identity text (core fields filter) for 8K context
+- Switched LLM from qwen2.5-coder:7b (8K context) to qwen3:8b (32K context)
+- Added compact identity text (core fields filter) as fallback for smaller models
 - Fixed `HealthResponse` schema (nested `ServiceStatus` instead of `ollama: bool`)
 - Added human-input UI panel in frontend (question display + answer input)
 - Surfaced `question` from WS heartbeat in `useAgentSocket` hook

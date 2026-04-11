@@ -2,7 +2,7 @@
 
 > **Autonomous AI job application agent** — Paste a URL, watch it apply.
 
-Powered by `qwen2.5-coder:7b` running locally via Ollama. No cloud API keys required. 100% private.
+Powered by `qwen3:8b` running locally via Ollama. No cloud API keys required. 100% private.
 
 ---
 
@@ -20,11 +20,11 @@ cp .env.example .env
 # 2. Launch everything
 docker compose up -d
 
-# First run: downloads qwen2.5-coder:7b (~4.1 GB). Follow progress:
+# First run: downloads qwen3:8b (~4.9 GB). Follow progress:
 docker logs -f smart-apply-ollama
 
 # 3. Open the dashboard
-open http://localhost:3000
+open http://localhost:3005
 ```
 
 That's it. Everything — Ollama, the AI model, FastAPI backend, context indexer, and React dashboard — runs in containers.
@@ -38,9 +38,9 @@ You paste a job URL
        ↓
 Scrapling scrapes the job description (bypasses Cloudflare/LinkedIn)
        ↓
-qwen2.5-coder:7b reads the JD + your identity data
+qwen3:8b reads the JD + your identity data (32K context window)
        ↓
-PinchTab opens headless Chrome → get_ui_elements() reads the form
+browser-use opens headless Chrome → reads and fills form fields
        ↓
 Agent fills each field → clicks Next → repeat until Submit
        ↓
@@ -51,11 +51,11 @@ You see every thought and action live in the dashboard
 
 | Tool | Why |
 |------|-----|
-| `qwen2.5-coder:7b` | **llmfit** scored it #1 for coding on this ARM VM — 9.5 tok/s, 9 GB RAM |
+| `qwen3:8b` | Strong instruction following + 32K context — fits full identity + page DOM without truncation |
 | Scrapling | Bypasses Cloudflare & LinkedIn anti-bot |
+| browser-use | Native Playwright agent with LLM-driven form navigation |
+| context-mode | SQLite FTS5 index for large DOM text — agent queries instead of reading walls of HTML |
 | PinchTab | Token-efficient DOM refs (e5 not `<button class="...">`) |
-| context-mode | Prevents DOM floods crashing the 8K context window |
-| smolagents | Reliable Python code execution loop with tool calling |
 
 ---
 
@@ -80,7 +80,7 @@ Copy your resume: `cp /path/to/resume.pdf data/identity/resume.pdf`
 
 | Service | URL | Description |
 |---------|-----|-------------|
-| Dashboard | http://localhost:3000 | React UI |
+| Dashboard | http://localhost:3005 | React UI |
 | API | http://localhost:8000 | FastAPI + Swagger |
 | Ollama | http://localhost:11434 | LLM inference |
 
@@ -90,8 +90,8 @@ Copy your resume: `cp /path/to/resume.pdf data/identity/resume.pdf`
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `LLM_MODEL` | `qwen2.5-coder:7b` | Ollama model to use |
-| `LLM_CONTEXT_SIZE` | `8192` | Context window (ARM-optimized) |
+| `LLM_MODEL` | `qwen3:8b` | Ollama model to use |
+| `LLM_CONTEXT_SIZE` | `32768` | Context window (qwen3 supports up to 32K) |
 | `AGENT_MAX_STEPS` | `20` | Max agent steps before giving up |
 | `N8N_LOG_WEBHOOK_URL` | *(empty)* | n8n webhook to log results (optional) |
 
@@ -101,7 +101,7 @@ See `.env.example` for all options.
 
 ## 🔗 n8n Automation (Optional)
 
-Smart Apply ships with four ready-to-import **n8n** workflow JSONs in the `n8n/` directory that wire it to Google Sheets and Telegram:
+Smart Apply ships with ready-to-import **n8n** workflow JSONs in the `n8n/` directory that wire it to Google Sheets and Telegram:
 
 | Workflow | What it does |
 |----------|-------------|
@@ -109,6 +109,8 @@ Smart Apply ships with four ready-to-import **n8n** workflow JSONs in the `n8n/`
 | **Profile Sync (Trigger)** | Polls sheet daily → `POST /profile/ingest/direct` to hot-reload identity |
 | **Queue Application** | Webhook: receive a job URL → append to queue sheet |
 | **Application Logger** | Webhook: receive result → log to Sheets + Telegram notification |
+| **Telegram Q&A** | Receives agent questions mid-run → sends to Telegram |
+| **Telegram Reply Listener** | Receives Telegram replies → answers the agent |
 
 ### Setup steps
 1. Import each JSON into your n8n instance (**Workflows → Import from file**)
@@ -123,14 +125,15 @@ POST /profile/ingest/direct   ← n8n pushes profile here (auto-reloads identity
 
 ## 🖥️ Hardware Requirements
 
-This setup was optimized by **llmfit** for:
+This setup was optimized for ARM64 inference:
 - **Minimum**: 4 CPU cores, 16 GB RAM, no GPU required
 - **Recommended**: 8+ CPU cores, 24 GB RAM
 - **Tested on**: Oracle Cloud ARM (Neoverse-N1, 4 cores, 24 GB RAM)
 
 Model can be swapped for faster/smaller options:
-- `qwen2.5-coder:3b` — faster (23 tok/s), less capable
-- `qwen2.5-coder:14b` — more capable, needs 16+ GB free RAM
+- `qwen3:4b` — faster, 32K context, less capable on complex forms
+- `gemma3:4b` — fastest, 14K context, good for simple applications
+- `qwen3:14b` — most capable, needs 16+ GB free RAM
 
 ---
 
@@ -141,4 +144,4 @@ See [ARCHITECTURE.md](./ARCHITECTURE.md) for technical deep-dive.
 
 ---
 
-*Built with llmfit-selected models • smolagents • PinchTab • Scrapling • context-mode*
+*Built with qwen3 • browser-use • PinchTab • Scrapling • context-mode*
